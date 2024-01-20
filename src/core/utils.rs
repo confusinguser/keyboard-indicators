@@ -1,5 +1,6 @@
 use std::process::Stdio;
 
+use rgb::{ComponentMap, RGB8, RGBA8};
 use tokio::process::{self, ChildStdout};
 
 pub(crate) fn run_command_async(command: &str) -> Option<ChildStdout> {
@@ -32,4 +33,12 @@ pub(crate) fn run_command(command: &str) -> Option<String> {
     String::from_utf8(cmd.stdout)
         .ok()
         .map(|e| e.trim().to_owned())
+}
+
+pub(crate) fn overlay(color1: RGBA8, color2: RGB8) -> RGB8 {
+    (color1
+        .rgb()
+        .map(|comp| comp as f32 * color1.a as f32 / 255.)
+        + color2.map(|comp| comp as f32 * (1. - color1.a as f32 / 255.)))
+    .map(|comp| comp as u8)
 }
