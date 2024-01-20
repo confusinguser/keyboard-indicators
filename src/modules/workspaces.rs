@@ -1,16 +1,14 @@
 use std::sync::Arc;
 
-use ksway::IpcEvent;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use anyhow::{bail, Context};
+use swayipc_async::{Connection, EventType, Node, WorkspaceChange, WorkspaceEvent};
 
 use crate::core::constants;
 use crate::core::keyboard_controller::KeyboardController;
 use crate::core::module::LinearModule;
-use crate::core::utils::run_command_async;
+use futures_util::stream::StreamExt;
 
-pub(crate) struct WorkspacesModule {
-    sway_client: ksway::Client,
-}
+pub(crate) struct WorkspacesModule {}
 
 impl LinearModule for WorkspacesModule {
     fn run(
@@ -18,97 +16,115 @@ impl LinearModule for WorkspacesModule {
         leds_order: Vec<u32>,
     ) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
-            let stdout =
-                run_command_async("swaymsg --pretty -t subscribe -m '[\"workspace\"]'").unwrap();
-            let mut buffer = BufReader::new(stdout).lines();
-
-            // A rudimentary form of parsing the JSON
-            let mut is_old = false;
-            let mut message_type = None;
+            let Ok(sway_client) = Connection::new().await else {
+                eprintln!("Failed to connect to Sway socket");
+                return;
+            };
+            let Ok(mut receiver) = sway_client.subscribe(vec![EventType::Workspace]).await else {
+                eprintln!("Failed to subscribe to Sway events");
+                return;
+            };
+            println!("Subscribed to Sway events");
             loop {
-                let line = buffer
-                    .next_line()
-                    .await
-                    .unwrap_or_default()
-                    .unwrap_or_default();
-                if line.is_empty() {
+                let Some(Ok(message)) = receiver.next().await else {
                     continue;
-                }
-                let line_trimmed = line.trim_start();
-
-                dbg!(&line_trimmed);
-                if line_trimmed.starts_with("\"change\":") {
-                    let message_type_string = line.trim_start().split(':').last();
-                    if let Some(message_type_string) = message_type_string {
-                        if let Some(message_type_local) = MessageType::parse(message_type_string) {
-                            message_type = Some(message_type_local);
-                        }
+                };
+                println!("Received Sway message: {:?}", &message);
+                match message {
+                    swayipc_async::Event::Workspace(workspace_event) => {
+                        dbg!(&workspace_event);
+                        let event_handler_output = Self::on_window_event(
+                            &keyboard_controller,
+                            &leds_order,
+                            workspace_event,
+                        )
+                        .await;
+                        if let Err(err) = event_handler_output {
+                            eprintln!("{}", err)
+                        };
                     }
-                    continue;
-                }
-
-                if line_trimmed.starts_with("\"old\":") {
-                    is_old = true;
-                    continue;
-                }
-
-                if line_trimmed.starts_with("\"current\":") {
-                    is_old = false;
-                    continue;
-                }
-
-                if !line_trimmed.starts_with("\"num\":") {
-                    continue;
-                }
-
-                let Some(Ok(num)) = line_trimmed.split(':').last().map(|num| num.parse::<u32>()) else {continue;};
-                dbg!(num, is_old);
-
-                if let Some(message_type) = message_type {
-                    let Some(&led_index) = leds_order.get(num as usize - 1) else {continue;};
-                    match message_type {
-                        MessageType::Focus => {
-                            let color = if is_old {
-                                constants::UNFOCUSED_WORKSPACE_COLOR
-                            } else {
-                                constants::CURRENT_WORKSPACE_COLOR
-                            };
-                            keyboard_controller.set_led_index(led_index, color).await;
-                        }
-                        MessageType::Empty => {
-                            keyboard_controller
-                                .set_led_index(led_index, constants::EMPTY_WORKSPACE_COLOR)
-                                .await;
-                        }
-                    }
-                }
+                    swayipc_async::Event::Output(_) => todo!(),
+                    swayipc_async::Event::Mode(_) => todo!(),
+                    swayipc_async::Event::Window(_) => {}
+                    swayipc_async::Event::BarConfigUpdate(_) => todo!(),
+                    swayipc_async::Event::Binding(_) => todo!(),
+                    swayipc_async::Event::Shutdown(_) => todo!(),
+                    swayipc_async::Event::Tick(_) => todo!(),
+                    swayipc_async::Event::BarStateUpdate(_) => todo!(),
+                    swayipc_async::Event::Input(_) => todo!(),
+                    _ => {}
+                };
+                // let Ok(event) = serde_json::from_slice(&message) else {
+                //     eprintln!("Message received from Sway not valid serialised json");
+                //     continue;
+                // };
             }
         })
     }
 }
 
 impl WorkspacesModule {
-    fn create_event_receiver(&self) -> Result {
-        let sway_client = match self.sway_client {
-            Some(c) => c,
-            None => ksway::Client::connect()?,
-        };
-        let listener = sway_client.subscribe(vec![IpcEvent::Window]);
+    /// The event that is triggered whenever something happens with windows
+    async fn on_window_event(
+        keyboard_controller: &Arc<KeyboardController>,
+        leds_order: &[u32],
+        event: Box<WorkspaceEvent>,
+    ) -> anyhow::Result<()> {
+        Self::handle_workspace_change(
+            keyboard_controller,
+            leds_order,
+            &event.current,
+            event.change,
+            false,
+        )
+        .await
+        .context("In current")?;
+        Self::handle_workspace_change(
+            keyboard_controller,
+            leds_order,
+            &event.old,
+            event.change,
+            true,
+        )
+        .await
+        .context("In old")?;
+
+        Ok(())
     }
-}
 
-#[derive(Clone, Copy)]
-enum MessageType {
-    Focus,
-    Empty,
-}
+    async fn handle_workspace_change(
+        keyboard_controller: &Arc<KeyboardController>,
+        leds_order: &[u32],
+        workspace: &Option<Node>,
+        change: WorkspaceChange,
+        old: bool,
+    ) -> anyhow::Result<()> {
+        let Some(workspace )= workspace else { return Ok(()); };
+        let Some(workspace_name)= workspace.name.clone() else { bail!("Workspace exists but has no name") };
+        let Some(Ok(num)) = workspace_name.split(':').last().map(|num| num.parse::<u32>()) else {bail!("workspace was a String but not a number")};
 
-impl MessageType {
-    fn parse(string: &str) -> Option<MessageType> {
-        match string {
-            "focus" => Some(Self::Focus),
-            "empty" => Some(Self::Empty),
-            _ => None,
-        }
+        let Some(&led_index) = leds_order.get(num as usize - 1) else {bail!("Workspace outside the LED range")};
+        keyboard_controller
+            .set_led_index(
+                led_index,
+                match change {
+                    WorkspaceChange::Focus => {
+                        if old {
+                            constants::UNFOCUSED_WORKSPACE_COLOR
+                        } else {
+                            constants::CURRENT_WORKSPACE_COLOR
+                        }
+                    }
+                    WorkspaceChange::Empty => constants::EMPTY_WORKSPACE_COLOR,
+                    WorkspaceChange::Init => constants::UNFOCUSED_WORKSPACE_COLOR,
+                    WorkspaceChange::Move => todo!(),
+                    WorkspaceChange::Rename => todo!(),
+                    WorkspaceChange::Urgent => todo!(),
+                    WorkspaceChange::Reload => todo!(),
+                    _ => todo!(),
+                },
+            )
+            .await?;
+        Ok(())
     }
 }

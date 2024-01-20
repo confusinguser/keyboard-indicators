@@ -1,8 +1,5 @@
-use std::collections::{BTreeMap, BTreeSet};
-
-use openrgb::data::{Color, Controller, Zone, LED};
+use openrgb::data::{Color, Controller};
 use openrgb::{OpenRGB, OpenRGBError};
-use serde::{Deserialize, Serialize};
 use tokio::net::TcpStream;
 
 use super::config_manager::Configuration;
@@ -25,7 +22,6 @@ impl KeyboardController {
     }
 
     pub(crate) async fn set_led(&self, x: u32, y: u32, color: Color) -> Result<(), OpenRGBError> {
-        // let first_in_row = vec![0, 23, 44, 67, 70, 90];
         let mut index = self.configuration.first_in_row[y as usize] + x;
         for &skip_index in self.configuration.skip_indicies.iter() {
             if skip_index <= index {
@@ -38,7 +34,7 @@ impl KeyboardController {
             .await
     }
 
-    pub(crate) async fn connect(configuration: Configuration) -> Result<Self, OpenRGBError> {
+    pub(crate) async fn connect(configuration: Configuration) -> anyhow::Result<Self> {
         let client = OpenRGB::connect().await;
         if client.is_err() {
             panic!("Connection refused. Check that OpenRGB is running")
@@ -65,5 +61,9 @@ impl KeyboardController {
 
     pub(crate) async fn num_leds(&self) -> u32 {
         self.controller.leds.len() as u32
+    }
+
+    pub(crate) fn change_configuration(&mut self, new: Configuration) {
+        self.configuration = new;
     }
 }
