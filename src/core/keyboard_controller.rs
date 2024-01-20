@@ -12,7 +12,11 @@ pub(crate) struct KeyboardController {
 }
 
 impl KeyboardController {
-    pub(crate) async fn set_led_index(&self, index: u32, color: Color) -> Result<(), OpenRGBError> {
+    pub(crate) async fn set_led_by_index(
+        &self,
+        index: u32,
+        color: Color,
+    ) -> Result<(), OpenRGBError> {
         // let first_in_row = vec![0, 23, 44, 67, 70, 90];
         // let id = first_in_row[y as usize] + x;
 

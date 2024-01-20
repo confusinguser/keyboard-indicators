@@ -26,11 +26,11 @@ async fn build_key_led_map(
     for index in 0..keyboard_controller.num_leds().await {
         if index != 0 {
             keyboard_controller
-                .set_led_index(index - 1, Color::new(0, 0, 0))
+                .set_led_by_index(index - 1, Color::new(0, 0, 0))
                 .await?;
         }
         keyboard_controller
-            .set_led_index(index, Color::new(255, 255, 255))
+            .set_led_by_index(index, Color::new(255, 255, 255))
             .await?;
         loop {
             let event = crossterm::event::read().unwrap();

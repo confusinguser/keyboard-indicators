@@ -6,6 +6,7 @@ use self::core::config_manager::Configuration;
 use self::core::keyboard_controller::KeyboardController;
 use self::core::module::LinearModule;
 use self::core::{config_creator, config_manager};
+use self::modules::media_playing::MediaModule;
 use self::modules::workspaces::WorkspacesModule;
 
 mod core;
@@ -34,15 +35,14 @@ async fn main() -> anyhow::Result<()> {
         }
     };
 
-    keyboard_controller.turn_all_off().await;
+    // keyboard_controller.turn_all_off().await;
     let arc = Arc::new(keyboard_controller);
     WorkspacesModule::run(
         arc.clone(),
-        vec![
-            24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
-        ],
-    )
-    .await
-    .unwrap();
+        vec![24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 3, 4, 5, 6],
+    );
+    MediaModule::run(arc.clone(), vec![7, 8, 9, 10])
+        .await
+        .unwrap();
     Ok(())
 }

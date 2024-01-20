@@ -1,7 +1,5 @@
 use std::sync::Arc;
 
-use openrgb::data::Color;
-use tokio::runtime::Handle;
 use tokio::task::JoinHandle;
 
 use super::keyboard_controller::KeyboardController;

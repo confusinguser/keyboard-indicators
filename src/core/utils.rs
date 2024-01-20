@@ -42,3 +42,61 @@ pub(crate) fn overlay(color1: RGBA8, color2: RGB8) -> RGB8 {
         + color2.map(|comp| comp as f32 * (1. - color1.a as f32 / 255.)))
     .map(|comp| comp as u8)
 }
+
+pub(crate) fn progress_bar(progress: f32, num_leds: u32, only_show_cursor: bool) -> Vec<f32> {
+    // We offset to make the bar start att all off and end at all on. Otherwise it will start at
+    // one LED on.
+    let offset = if !only_show_cursor { 1 } else { 0 };
+    let progress_to_next_led = progress % (1. / (num_leds as f32)) * num_leds as f32;
+    // The LED that is the furthest back in the "cursor"
+    let led_at_back = (progress / (1. / num_leds as f32)).floor() as u32;
+    let mut out = Vec::with_capacity(num_leds as usize);
+    for i in offset..num_leds + offset {
+        out.push(if i < led_at_back {
+            if only_show_cursor {
+                0.
+            } else {
+                1.
+            }
+        } else if i == led_at_back {
+            if only_show_cursor {
+                1. - progress_to_next_led
+            } else {
+                1.
+            }
+        } else if i == led_at_back + 1 {
+            progress_to_next_led
+        } else {
+            0.
+        })
+    }
+    out
+}
+
+/// Returns a vector with "orders". Each order is a tuple where the first element is the LED index
+/// and the second is the brightness it should have as a float from 0.0 to 1.0
+pub(crate) fn progress_bar_diff(
+    progress: f32,
+    last_progress: Option<f32>,
+    num_leds: u32,
+    only_show_cursor: bool,
+) -> Vec<(u32, f32)> {
+    let last_progress_bar =
+        last_progress.map(|last_progress| progress_bar(last_progress, num_leds, only_show_cursor));
+    let mut out = Vec::new();
+    let progress_bar = progress_bar(progress, num_leds, only_show_cursor);
+    if let Some(last_progress_bar) = last_progress_bar {
+        for (i, &led_value) in progress_bar.iter().enumerate() {
+            if last_progress_bar[i] != led_value {
+                out.push((i as u32, led_value));
+            }
+        }
+    } else {
+        out = progress_bar
+            .iter()
+            .enumerate()
+            .map(|(i, led_value)| (i as u32, *led_value))
+            .collect();
+    }
+    out
+}

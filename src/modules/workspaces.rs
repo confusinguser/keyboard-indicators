@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::sync::Arc;
 
 use anyhow::{bail, Context};
@@ -27,7 +26,6 @@ impl LinearModule for WorkspacesModule {
                 eprintln!("Failed to subscribe to Sway events");
                 return;
             };
-            println!("Subscribed to Sway events");
             loop {
                 let Some(Ok(message)) = receiver.next().await else {
                     continue;
@@ -89,19 +87,31 @@ impl WorkspacesModule {
     ) -> anyhow::Result<()> {
         let change: WorkspaceChange = event.change;
         let workspace = if old { &event.old } else { &event.current };
-        let Some(workspace) = workspace else { return Ok(()); };
-        let Some(workspace_num)= workspace.num else { bail!("Workspace exists but has no number") };
+        let Some(workspace) = workspace else {
+            return Ok(());
+        };
+        let Some(workspace_num) = workspace.num else {
+            bail!("Workspace exists but has no number")
+        };
         let all_app_colors = workspace
             .nodes
             .iter()
-            .filter_map(|e| {
-                if e.app_id.as_ref().is_some_and(|app_id| app_id.is_empty()) {
+            .filter_map(|window| {
+                if window
+                    .app_id
+                    .as_ref()
+                    .is_some_and(|app_id| app_id.is_empty())
+                {
                     return Some(constants::SPOTIFY_WORKSPACE_COLOR);
                 }
-                if e.app_id.is_none() {
+                if window.app_id.is_none() {
                     return Some(constants::DISCORD_WORKSPACE_COLOR);
                 }
-                if e.app_id.as_ref().is_some_and(|app_id| app_id == "firefox") {
+                if window
+                    .app_id
+                    .as_ref()
+                    .is_some_and(|app_id| app_id == "firefox")
+                {
                     return Some(constants::FIREFOX_WORKSPACE_COLOR);
                 }
                 None
@@ -120,7 +130,9 @@ impl WorkspacesModule {
             constants::UNFOCUSED_DEFAULT_WORKSPACE_COLOR
         };
 
-        let Some(&led_index) = leds_order.get(workspace_num as usize - 1) else { bail!("Workspace outside the LED range") };
+        let Some(&led_index) = leds_order.get(workspace_num as usize - 1) else {
+            bail!("Workspace outside the LED range")
+        };
         let new_color = match change {
             WorkspaceChange::Focus => {
                 if old {
@@ -137,14 +149,22 @@ impl WorkspacesModule {
             }
             WorkspaceChange::Empty => Some(constants::EMPTY_WORKSPACE_COLOR),
             WorkspaceChange::Init => Some(constants::UNFOCUSED_DEFAULT_WORKSPACE_COLOR),
-            WorkspaceChange::Move => todo!(),
-            WorkspaceChange::Urgent => Some(constants::URGENT_WORKSPACE_COLOR),
-            WorkspaceChange::Reload => todo!(),
+            WorkspaceChange::Urgent => {
+                if event
+                    .current
+                    .as_ref()
+                    .is_some_and(|workspace| workspace.urgent)
+                {
+                    Some(constants::URGENT_WORKSPACE_COLOR)
+                } else {
+                    None
+                }
+            }
             _ => None,
         };
         if let Some(new_color) = new_color {
             keyboard_controller
-                .set_led_index(led_index, new_color)
+                .set_led_by_index(led_index, new_color)
                 .await?;
         }
         Ok(())

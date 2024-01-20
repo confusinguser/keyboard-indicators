@@ -9,3 +9,8 @@ pub const URGENT_WORKSPACE_COLOR: Color = Color::new(255, 0, 0);
 pub const SPOTIFY_WORKSPACE_COLOR: Color = Color::new(30, 215, 96);
 pub const DISCORD_WORKSPACE_COLOR: Color = Color::new(88, 101, 242);
 pub const FIREFOX_WORKSPACE_COLOR: Color = Color::new(230, 0x60, 0);
+
+pub const SPOTIFY_MEDIA_PLAYING_COLOR: Color = Color::new(30, 215, 96);
+pub const NETFLIX_MEDIA_PLAYING_COLOR: Color = Color::new(229, 9, 20);
+pub const DEFAULT_MEDIA_PLAYING_COLOR: Color = Color::new(255, 0, 0);
+pub const PAUSED_MEDIA_PLAYING_COLOR: Color = Color::new(30, 30, 30);
