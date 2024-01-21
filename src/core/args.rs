@@ -10,11 +10,7 @@ enum Cli {
 #[command(version, about, long_about = None)]
 pub(crate) struct StartArgs {
     /// Config path
-    #[arg(
-        short,
-        long,
-        default_value = "~/.config/keyboard-indicators/keymap.yaml"
-    )]
+    #[arg(short, long)]
     pub(crate) keymap_path: Option<String>,
 }
 

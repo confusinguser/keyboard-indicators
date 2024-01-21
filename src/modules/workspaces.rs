@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 use std::sync::Arc;
 
 use anyhow::{bail, Context};
@@ -7,18 +6,18 @@ use rgb::{ComponentMap, RGB};
 use swayipc_async::{Connection, EventType, WorkspaceChange, WorkspaceEvent};
 
 use crate::core::keyboard_controller::KeyboardController;
-use crate::core::module::LinearModule;
 use crate::core::{constants, utils};
 use futures_util::stream::StreamExt;
 
 pub(crate) struct WorkspacesModule {}
 
-impl LinearModule for WorkspacesModule {
-    fn run(
+impl WorkspacesModule {
+    pub fn run(
         keyboard_controller: Arc<KeyboardController>,
-        leds_order: Vec<u32>,
-    ) -> tokio::task::JoinHandle<()> {
-        tokio::spawn(async move {
+        leds_order: Vec<Option<u32>>,
+    ) -> Vec<tokio::task::JoinHandle<()>> {
+        let mut handles = Vec::with_capacity(1);
+        let handle = tokio::spawn(async move {
             let Ok(sway_client) = Connection::new().await else {
                 eprintln!("Failed to connect to Sway socket");
                 return;
@@ -60,15 +59,15 @@ impl LinearModule for WorkspacesModule {
                 //     continue;
                 // };
             }
-        })
+        });
+        handles.push(handle);
+        handles
     }
-}
 
-impl WorkspacesModule {
     /// The event that is triggered whenever something happens with windows
     async fn on_window_event(
         keyboard_controller: &Arc<KeyboardController>,
-        leds_order: &[u32],
+        leds_order: &[Option<u32>],
         event: Box<WorkspaceEvent>,
     ) -> anyhow::Result<()> {
         Self::handle_workspace_change(keyboard_controller, leds_order, &event, false)
@@ -83,14 +82,18 @@ impl WorkspacesModule {
 
     async fn handle_workspace_change(
         keyboard_controller: &Arc<KeyboardController>,
-        leds_order: &[u32],
+        leds_order: &[Option<u32>],
         event: &WorkspaceEvent,
         old: bool,
     ) -> anyhow::Result<()> {
         let change: WorkspaceChange = event.change;
         let workspace = if old { &event.old } else { &event.current };
-        let Some(workspace) = workspace else { return Ok(()); };
-        let Some(workspace_num)= workspace.num else { bail!("Workspace exists but has no number") };
+        let Some(workspace) = workspace else {
+            return Ok(());
+        };
+        let Some(workspace_num) = workspace.num else {
+            bail!("Workspace exists but has no number")
+        };
         let all_app_colors = workspace
             .nodes
             .iter()
@@ -120,7 +123,9 @@ impl WorkspacesModule {
             constants::UNFOCUSED_DEFAULT_WORKSPACE_COLOR
         };
 
-        let Some(&led_index) = leds_order.get(workspace_num as usize - 1) else { bail!("Workspace outside the LED range") };
+        let Some(&led_index) = leds_order.get(workspace_num as usize - 1) else {
+            bail!("Workspace outside the LED range")
+        };
         let new_color = match change {
             WorkspaceChange::Focus => {
                 if old {
@@ -143,9 +148,11 @@ impl WorkspacesModule {
             _ => None,
         };
         if let Some(new_color) = new_color {
-            keyboard_controller
-                .set_led_index(led_index, new_color)
-                .await?;
+            if let Some(led_index) = led_index {
+                keyboard_controller
+                    .set_led_index(led_index, new_color)
+                    .await?;
+            }
         }
         Ok(())
     }
