@@ -14,17 +14,13 @@ pub(crate) async fn start_config_creator(
 ) -> anyhow::Result<Configuration> {
     let mut config = Configuration::default();
     println!("Press every key as it lights up. If no key lights up, press LMB. If no reaction is given when key is pressed, press RMB");
-
-    prepare_terminal_event_capture()?;
     build_key_led_map(keyboard_controller, &mut config).await?;
     println!("Press the first keys of every row. In order. When all of them have been pressed, press LMB");
     build_first_in_row(keyboard_controller, &mut config).await?;
     println!("Now, we're going to place the modules. First of all, choose a module to add:");
     let module_type = choose_module_to_add()?;
-    prepare_terminal_event_capture()?;
     println!("Click the buttons which are in this module IN ORDER from left to right. Press LMB when done. Press RMB to add a button to the module which is not tied to any LED");
     add_module(keyboard_controller, &mut config, module_type).await?;
-    default_terminal_settings()?;
     Ok(config)
 }
 
@@ -33,9 +29,10 @@ async fn add_module(
     config: &mut Configuration,
     module_type: ModuleType,
 ) -> anyhow::Result<()> {
+    prepare_terminal_event_capture()?;
+    let mut module_leds = Vec::new();
     loop {
         let event = crossterm::event::read().unwrap();
-        let mut module_leds = Vec::new();
         if let Event::Key(event) = event {
             if event.kind != KeyEventKind::Press {
                 continue;
@@ -45,19 +42,21 @@ async fn add_module(
                 default_terminal_settings()?;
                 panic!("Interrupted by user");
             }
+            default_terminal_settings()?;
             if let Some(&index_pressed) = config.key_led_map.get(&event.code) {
                 module_leds.push(Some(index_pressed));
                 keyboard_controller
                     .set_led_index(index_pressed, Color::new(255, 255, 255))
                     .await?;
             } else {
-                println!(
-                    "This button is not tied to an LED, it can't be marked as first button in row"
-                );
+                println!("This button is not tied to an LED, it can't be used in module");
             }
+            prepare_terminal_event_capture()?;
         }
         if let Event::Mouse(event) = event {
             if event.kind == MouseEventKind::Down(MouseButton::Left) {
+                default_terminal_settings()?;
+                println!("Creating module {}", module_type.name());
                 let module = Module::new(module_type, module_leds);
                 config.modules.push(module);
                 break;
@@ -67,6 +66,7 @@ async fn add_module(
             }
         }
     }
+    default_terminal_settings()?;
     Ok(())
 }
 
@@ -95,6 +95,8 @@ async fn build_first_in_row(
     keyboard_controller: &KeyboardController,
     config: &mut Configuration,
 ) -> anyhow::Result<()> {
+    prepare_terminal_event_capture()?;
+    keyboard_controller.turn_all_off().await?;
     loop {
         let event = crossterm::event::read().unwrap();
         if let Event::Key(event) = event {
@@ -117,12 +119,14 @@ async fn build_first_in_row(
         }
         if let Event::Mouse(event) = event {
             if event.kind == MouseEventKind::Down(MouseButton::Left) {
+                default_terminal_settings()?;
                 println!("Great. There are {} rows", config.first_in_row.len());
                 keyboard_controller.turn_all_off().await?;
                 break;
             }
         }
     }
+    default_terminal_settings()?;
     Ok(())
 }
 
@@ -130,6 +134,8 @@ async fn build_key_led_map(
     keyboard_controller: &KeyboardController,
     config: &mut Configuration,
 ) -> anyhow::Result<()> {
+    prepare_terminal_event_capture()?;
+    keyboard_controller.turn_all_off().await?;
     for index in 0..keyboard_controller.num_leds().await {
         if index != 0 {
             keyboard_controller
@@ -169,6 +175,7 @@ async fn build_key_led_map(
             }
         }
     }
+    default_terminal_settings()?;
     Ok(())
 }
 fn prepare_terminal_event_capture() -> anyhow::Result<()> {

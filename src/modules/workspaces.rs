@@ -70,9 +70,8 @@ impl WorkspacesModule {
         leds_order: &[Option<u32>],
         event: Box<WorkspaceEvent>,
     ) -> anyhow::Result<()> {
-        Self::handle_workspace_change(keyboard_controller, leds_order, &event, false)
-            .await
-            .context("In current")?;
+        Self::handle_workspace_change(keyboard_controller, leds_order, &event, false).await?;
+        // .context("In current")?;
         Self::handle_workspace_change(keyboard_controller, leds_order, &event, true)
             .await
             .context("In old")?;
