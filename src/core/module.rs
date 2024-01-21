@@ -3,6 +3,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
 
+use crate::modules::media_playing::MediaModule;
 use crate::modules::workspaces::WorkspacesModule;
 
 use super::keyboard_controller::KeyboardController;
@@ -24,6 +25,7 @@ impl Module {
 #[derive(Serialize, Debug, Copy, Clone, Deserialize)]
 pub(crate) enum ModuleType {
     WorkspacesModule,
+    MediaModule,
 }
 
 impl ModuleType {
@@ -34,21 +36,24 @@ impl ModuleType {
     ) -> Vec<JoinHandle<()>> {
         match self {
             ModuleType::WorkspacesModule => WorkspacesModule::run(keyboard_controller, module_leds),
+            ModuleType::MediaModule => MediaModule::run(keyboard_controller, module_leds),
         }
     }
 
     pub(crate) fn name(&self) -> &'static str {
         match self {
             ModuleType::WorkspacesModule => "Sway Workspaces",
+            ModuleType::MediaModule => "Media Player Monitor",
         }
     }
     pub(crate) fn desc(&self) -> &'static str {
         match self {
             ModuleType::WorkspacesModule => "",
+            ModuleType::MediaModule => "Shows media playhead and platform on keyboard",
         }
     }
 
-    pub(crate) fn all_module_types() -> [ModuleType; 1] {
-        [ModuleType::WorkspacesModule]
+    pub(crate) fn all_module_types() -> [ModuleType; 2] {
+        [ModuleType::WorkspacesModule, ModuleType::MediaModule]
     }
 }

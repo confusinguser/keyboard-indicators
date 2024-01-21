@@ -9,10 +9,11 @@ use crate::core::{constants, utils};
 pub(crate) struct MediaModule {}
 
 impl MediaModule {
-    fn run(
+    pub(crate) fn run(
         keyboard_controller: Arc<KeyboardController>,
         module_leds: Vec<Option<u32>>,
-    ) -> tokio::task::JoinHandle<()> {
+    ) -> Vec<tokio::task::JoinHandle<()>> {
+        let mut handles = Vec::new();
         let track_duration: Arc<Mutex<Option<Duration>>> = Arc::new(Mutex::new(None));
         let track_duration_clone = track_duration.clone();
         let metadata_listener = tokio::spawn(async {
@@ -45,7 +46,8 @@ impl MediaModule {
                 }
             }
         });
-        tokio::spawn(async move {
+        handles.push(metadata_listener);
+        let handle = tokio::spawn(async move {
             let mut paused_since_last_time = false;
             let mut last_progress = None;
             loop {
@@ -57,12 +59,11 @@ impl MediaModule {
                         let keyboard_controller_clone = keyboard_controller.clone();
 
                         let module_leds_clone = module_leds.clone();
-                        for led_index in module_leds_clone {
-                            if let Some(led_index) = led_index {
-                                keyboard_controller_clone
-                                    .set_led_by_index(led_index, color)
-                                    .await;
-                            }
+                        // flatten() filters out None
+                        for led_index in module_leds_clone.into_iter().flatten() {
+                            keyboard_controller_clone
+                                .set_led_by_index(led_index, color)
+                                .await;
                         }
                     }
                     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -118,7 +119,9 @@ impl MediaModule {
                 last_progress = Some(progress);
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
-        })
+        });
+        handles.push(handle);
+        handles
     }
 }
 
