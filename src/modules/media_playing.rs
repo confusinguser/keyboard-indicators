@@ -1,20 +1,17 @@
 use rgb::{ComponentMap, RGB8};
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::runtime::Handle;
 
 use crate::core::keyboard_controller::KeyboardController;
-use crate::core::module::LinearModule;
 use crate::core::{constants, utils};
 
 pub(crate) struct MediaModule {}
 
-impl LinearModule for MediaModule {
+impl MediaModule {
     fn run(
         keyboard_controller: Arc<KeyboardController>,
-        leds_order: Vec<u32>,
+        module_leds: Vec<Option<u32>>,
     ) -> tokio::task::JoinHandle<()> {
         let track_duration: Arc<Mutex<Option<Duration>>> = Arc::new(Mutex::new(None));
         let track_duration_clone = track_duration.clone();
@@ -59,9 +56,13 @@ impl LinearModule for MediaModule {
                         last_progress = None;
                         let keyboard_controller_clone = keyboard_controller.clone();
 
-                        let leds_order_clone = leds_order.clone();
-                        for led in leds_order_clone {
-                            keyboard_controller_clone.set_led_by_index(led, color).await;
+                        let module_leds_clone = module_leds.clone();
+                        for led_index in module_leds_clone {
+                            if let Some(led_index) = led_index {
+                                keyboard_controller_clone
+                                    .set_led_by_index(led_index, color)
+                                    .await;
+                            }
                         }
                     }
                     tokio::time::sleep(Duration::from_millis(100)).await;
@@ -100,17 +101,19 @@ impl LinearModule for MediaModule {
                 for order in utils::progress_bar_diff(
                     progress,
                     last_progress,
-                    leds_order.len() as u32,
+                    module_leds.len() as u32,
                     false,
                 ) {
                     let keyboard_controller_clone = keyboard_controller.clone();
-                    let led_index = leds_order[order.0 as usize];
-                    keyboard_controller_clone
-                        .set_led_by_index(
-                            led_index,
-                            color.map(|comp| (comp as f32 * order.1) as u8),
-                        )
-                        .await;
+                    let led_index = module_leds[order.0 as usize];
+                    if let Some(led_index) = led_index {
+                        keyboard_controller_clone
+                            .set_led_by_index(
+                                led_index,
+                                color.map(|comp| (comp as f32 * order.1) as u8),
+                            )
+                            .await;
+                    }
                 }
                 last_progress = Some(progress);
                 tokio::time::sleep(Duration::from_millis(100)).await;

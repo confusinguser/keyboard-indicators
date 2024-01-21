@@ -6,18 +6,18 @@ use rgb::{ComponentMap, RGB};
 use swayipc_async::{Connection, EventType, WorkspaceChange, WorkspaceEvent};
 
 use crate::core::keyboard_controller::KeyboardController;
-use crate::core::module::LinearModule;
 use crate::core::{constants, utils};
 use futures_util::stream::StreamExt;
 
 pub(crate) struct WorkspacesModule {}
 
-impl LinearModule for WorkspacesModule {
-    fn run(
+impl WorkspacesModule {
+    pub fn run(
         keyboard_controller: Arc<KeyboardController>,
-        leds_order: Vec<u32>,
-    ) -> tokio::task::JoinHandle<()> {
-        tokio::spawn(async move {
+        leds_order: Vec<Option<u32>>,
+    ) -> Vec<tokio::task::JoinHandle<()>> {
+        let mut handles = Vec::with_capacity(1);
+        let handle = tokio::spawn(async move {
             let Ok(sway_client) = Connection::new().await else {
                 eprintln!("Failed to connect to Sway socket");
                 return;
@@ -26,6 +26,7 @@ impl LinearModule for WorkspacesModule {
                 eprintln!("Failed to subscribe to Sway events");
                 return;
             };
+            println!("Subscribed to Sway events");
             loop {
                 let Some(Ok(message)) = receiver.next().await else {
                     continue;
@@ -58,7 +59,9 @@ impl LinearModule for WorkspacesModule {
                 //     continue;
                 // };
             }
-        })
+        });
+        handles.push(handle);
+        handles
     }
 }
 
@@ -66,12 +69,11 @@ impl WorkspacesModule {
     /// The event that is triggered whenever something happens with windows
     async fn on_window_event(
         keyboard_controller: &Arc<KeyboardController>,
-        leds_order: &[u32],
+        leds_order: &[Option<u32>],
         event: Box<WorkspaceEvent>,
     ) -> anyhow::Result<()> {
-        Self::handle_workspace_change(keyboard_controller, leds_order, &event, false)
-            .await
-            .context("In current")?;
+        Self::handle_workspace_change(keyboard_controller, leds_order, &event, false).await?;
+        // .context("In current")?;
         Self::handle_workspace_change(keyboard_controller, leds_order, &event, true)
             .await
             .context("In old")?;
@@ -81,7 +83,7 @@ impl WorkspacesModule {
 
     async fn handle_workspace_change(
         keyboard_controller: &Arc<KeyboardController>,
-        leds_order: &[u32],
+        leds_order: &[Option<u32>],
         event: &WorkspaceEvent,
         old: bool,
     ) -> anyhow::Result<()> {
@@ -96,22 +98,14 @@ impl WorkspacesModule {
         let all_app_colors = workspace
             .nodes
             .iter()
-            .filter_map(|window| {
-                if window
-                    .app_id
-                    .as_ref()
-                    .is_some_and(|app_id| app_id.is_empty())
-                {
+            .filter_map(|e| {
+                if e.app_id.as_ref().is_some_and(|app_id| app_id.is_empty()) {
                     return Some(constants::SPOTIFY_WORKSPACE_COLOR);
                 }
-                if window.app_id.is_none() {
+                if e.app_id.is_none() {
                     return Some(constants::DISCORD_WORKSPACE_COLOR);
                 }
-                if window
-                    .app_id
-                    .as_ref()
-                    .is_some_and(|app_id| app_id == "firefox")
-                {
+                if e.app_id.as_ref().is_some_and(|app_id| app_id == "firefox") {
                     return Some(constants::FIREFOX_WORKSPACE_COLOR);
                 }
                 None
@@ -163,9 +157,11 @@ impl WorkspacesModule {
             _ => None,
         };
         if let Some(new_color) = new_color {
-            keyboard_controller
-                .set_led_by_index(led_index, new_color)
-                .await?;
+            if let Some(led_index) = led_index {
+                keyboard_controller
+                    .set_led_by_index(led_index, new_color)
+                    .await?;
+            }
         }
         Ok(())
     }
