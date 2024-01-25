@@ -3,8 +3,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::bail;
+use clap::ArgMatches;
 
-use self::core::args::{self, Cli, CreateConfigArgs, StartArgs};
+use self::core::cli::{self};
 use self::core::config_manager::Configuration;
 use self::core::keyboard_controller::KeyboardController;
 use self::core::{config_creator, config_manager};
@@ -13,33 +14,38 @@ mod core;
 mod modules;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let args = args::parse_args();
-    match args {
-        Cli::Start(start_args) => start(start_args).await,
-        Cli::CreateConfig(create_config_args) => create_config(create_config_args).await,
+    let matches = cli::parse_args();
+    match matches.subcommand_name() {
+        Some("start") => start(matches.subcommand().unwrap().1).await,
+        Some("create-config") => create_config(matches.subcommand().unwrap().1).await,
+        Some("module") => create_config(matches.subcommand().unwrap().1).await,
+        _ => bail!("Unknown subcommand"),
     }
 }
 
-async fn create_config(args: CreateConfigArgs) -> anyhow::Result<()> {
-    let keymap_path = match args.keymap_path {
-        Some(keymap_path) => Some(PathBuf::from(&keymap_path)),
+async fn create_config(args: &ArgMatches) -> anyhow::Result<()> {
+    let keymap_path = match args.get_one::<PathBuf>("config") {
         None => dirs::config_dir().map(|pathbuf| pathbuf.join("keyboard-indicators/keymap.yaml")),
+        Some(pathbuf) => Some(pathbuf.clone()),
     };
 
     let Some(keymap_path) = keymap_path else {
         bail!("Could not find a path for config. Please specify your own");
     };
     let keyboard_controller = KeyboardController::connect(Configuration::default()).await?;
-    config_manager::write_config(&keymap_path, &Configuration::default())?;
-    let new_config = config_creator::start_config_creator(&keyboard_controller).await?;
+    let new_config = config_creator::start_config_creator(
+        &keyboard_controller,
+        args.get_one::<u32>("ledlimit").copied(),
+    )
+    .await?;
     config_manager::write_config(&keymap_path, &new_config)?;
     Ok(())
 }
 
-async fn start(args: StartArgs) -> anyhow::Result<()> {
-    let keymap_path = match args.keymap_path {
-        Some(keymap_path) => Some(PathBuf::from(&keymap_path)),
+async fn start(args: &ArgMatches) -> anyhow::Result<()> {
+    let keymap_path = match args.get_one::<PathBuf>("config") {
         None => dirs::config_dir().map(|pathbuf| pathbuf.join("keyboard-indicators/keymap.yaml")),
+        Some(pathbuf) => Some(pathbuf.clone()),
     };
 
     let Some(keymap_path) = keymap_path else {
@@ -68,7 +74,8 @@ async fn start(args: StartArgs) -> anyhow::Result<()> {
             if recreate_config {
                 keyboard_controller = KeyboardController::connect(Configuration::default()).await?;
                 config_manager::write_config(&keymap_path, &Configuration::default())?;
-                let new_config = config_creator::start_config_creator(&keyboard_controller).await?;
+                let new_config =
+                    config_creator::start_config_creator(&keyboard_controller, None).await?;
                 config_manager::write_config(&keymap_path, &new_config)?;
                 keyboard_controller.config = new_config;
             } else {

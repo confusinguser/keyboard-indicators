@@ -72,8 +72,9 @@ impl WorkspacesModule {
         leds_order: &[Option<u32>],
         event: Box<WorkspaceEvent>,
     ) -> anyhow::Result<()> {
-        Self::handle_workspace_change(keyboard_controller, leds_order, &event, false).await?;
-        // .context("In current")?;
+        Self::handle_workspace_change(keyboard_controller, leds_order, &event, false)
+            .await
+            .context("In current")?;
         Self::handle_workspace_change(keyboard_controller, leds_order, &event, true)
             .await
             .context("In old")?;
@@ -125,7 +126,9 @@ impl WorkspacesModule {
         };
 
         let Some(&led_index) = leds_order.get(workspace_num as usize - 1) else {
-            bail!("Workspace outside the LED range")
+            // Workspace outside the LED range is ok, and is expected to happen with some configs
+            // TODO add some debug logging about it
+            return Ok(());
         };
         let new_color = match change {
             WorkspaceChange::Focus => {
