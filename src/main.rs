@@ -1,19 +1,22 @@
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::bail;
+use rgb::RGB8;
 
-use self::core::args::{self, Cli, CreateConfigArgs, StartArgs};
+use self::core::cli::{self, Cli, CreateConfigArgs, StartArgs};
 use self::core::config_manager::Configuration;
 use self::core::keyboard_controller::KeyboardController;
 use self::core::{config_creator, config_manager};
+use self::modules::starfield::{StarfieldModule, StarfieldModuleOptions};
 
 mod core;
 mod modules;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let args = args::parse_args();
+    let args = cli::parse_args();
     match args {
         Cli::Start(start_args) => start(start_args).await,
         Cli::CreateConfig(create_config_args) => create_config(create_config_args).await,
@@ -88,17 +91,45 @@ async fn start(args: StartArgs) -> anyhow::Result<()> {
         );
     }
 
+    let mut vec = StarfieldModule::run(
+        keyboard_controller.clone(),
+        vec![
+            Some(24),
+            Some(25),
+            Some(26),
+            Some(27),
+            Some(28),
+            Some(29),
+            Some(30),
+            Some(31),
+            Some(32),
+            Some(33),
+            Some(3),
+            Some(4),
+            Some(5),
+            Some(6),
+            Some(7),
+            Some(8),
+            Some(9),
+            Some(10),
+            Some(11),
+            Some(12),
+            Some(13),
+            Some(14),
+        ],
+        StarfieldModuleOptions {
+            background: RGB8::new(0xF7, 0xCA, 0x18),
+            min_currently_in_animation: 5,
+            target_color: RGB8::new(0x00, 128, 0),
+            probability: 0.0004,
+            animation_time: Duration::from_secs(1),
+        },
+    );
+
+    join_hooks.append(&mut vec);
     // Make sure to not exit if threads are open
     for hook in join_hooks {
         hook.await?;
     }
-    // WorkspacesModule::run(
-    //     arc.clone(),
-    //     vec![
-    //         24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
-    //     ],
-    // )
-    // .await
-    // .unwrap();
     Ok(())
 }
