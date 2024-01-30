@@ -35,12 +35,10 @@ impl StarfieldModule {
                 return;
             };
             let mut currently_in_animation: Vec<(u32, f32)> = Vec::new();
-            for led in &module_leds {
-                if let Some(led) = led {
-                    keyboard_controller
-                        .set_led_by_index(*led, options.background)
-                        .await;
-                }
+            for led in module_leds.iter().flatten() {
+                keyboard_controller
+                    .set_led_by_index(*led, options.background)
+                    .await;
             }
 
             let mut last_update = Instant::now();
