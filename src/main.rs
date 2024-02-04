@@ -3,8 +3,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::bail;
+use tokio::signal;
+use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 
-use self::core::args::{self, Cli, CreateConfigArgs, StartArgs};
+use self::core::cli::{self, Cli, CreateConfigArgs, StartArgs};
 use self::core::config_manager::Configuration;
 use self::core::keyboard_controller::KeyboardController;
 use self::core::{config_creator, config_manager};
@@ -13,7 +16,7 @@ mod core;
 mod modules;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let args = args::parse_args();
+    let args = cli::parse_args();
     match args {
         Cli::Start(start_args) => start(start_args).await,
         Cli::CreateConfig(create_config_args) => create_config(create_config_args).await,
@@ -77,21 +80,35 @@ async fn start(args: StartArgs) -> anyhow::Result<()> {
         }
     };
 
+    let cancellation_token = CancellationToken::new();
     keyboard_controller.turn_all_off().await?;
     let keyboard_controller = Arc::new(keyboard_controller);
-    let mut join_hooks = Vec::new();
+    let task_tracker = TaskTracker::new();
     for module in &keyboard_controller.config.modules {
-        join_hooks.append(
-            &mut module
-                .module_type
-                .run(keyboard_controller.clone(), module.module_leds.clone()),
+        module.module_type.run(
+            &task_tracker,
+            cancellation_token.clone(),
+            keyboard_controller.clone(),
+            module.module_leds.clone(),
         );
     }
 
-    // Make sure to not exit if threads are open
-    for hook in join_hooks {
-        hook.await?;
+    task_tracker.close();
+
+    match signal::ctrl_c().await {
+        Ok(_) => {
+            println!("Ctrl C received");
+            cancellation_token.cancel();
+        }
+        Err(_) => {
+            println!("Cannot receive Ctrl C signals, shutting down");
+            cancellation_token.cancel();
+        }
     }
+
+    // Make sure to not exit if threads are open
+    task_tracker.wait().await;
+
     // WorkspacesModule::run(
     //     arc.clone(),
     //     vec![
