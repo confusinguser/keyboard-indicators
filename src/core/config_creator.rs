@@ -136,7 +136,7 @@ async fn build_key_led_map(
 ) -> anyhow::Result<()> {
     prepare_terminal_event_capture()?;
     keyboard_controller.turn_all_off().await?;
-    for index in 0..keyboard_controller.num_leds().await {
+    for index in 0..keyboard_controller.num_leds().await.min(10) {
         if index != 0 {
             keyboard_controller
                 .set_led_by_index(index - 1, Color::new(0, 0, 0))

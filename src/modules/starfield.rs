@@ -5,6 +5,8 @@ use rand::distributions::{Bernoulli, Distribution};
 use rand::Rng;
 use rgb::{ComponentMap, RGB8};
 use serde::{Deserialize, Serialize};
+use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 
 use crate::core::keyboard_controller::KeyboardController;
 
@@ -21,11 +23,13 @@ pub(crate) struct StarfieldModule {}
 
 impl StarfieldModule {
     pub fn run(
+        task_tracker: &TaskTracker,
+        cancellation_token: CancellationToken,
         keyboard_controller: Arc<KeyboardController>,
         module_leds: Vec<Option<u32>>,
         options: StarfieldModuleOptions,
-    ) -> Vec<tokio::task::JoinHandle<()>> {
-        let handle = tokio::spawn(async move {
+    ) {
+        task_tracker.spawn(async move {
             let bernoulli = Bernoulli::new(options.probability);
             let Ok(bernoulli) = bernoulli else {
                 eprintln!(
@@ -43,6 +47,9 @@ impl StarfieldModule {
 
             let mut last_update = Instant::now();
             loop {
+                if cancellation_token.is_cancelled() {
+                    break;
+                }
                 if bernoulli.sample(&mut rand::thread_rng())
                     || currently_in_animation.len() < options.min_currently_in_animation as usize
                 {
@@ -69,7 +76,6 @@ impl StarfieldModule {
                 tokio::time::sleep(Duration::from_millis(10)).await;
             }
         });
-        vec![handle]
     }
 }
 
