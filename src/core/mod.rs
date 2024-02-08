@@ -1,4 +1,3 @@
-pub mod cli;
 pub mod config_creator;
 pub mod config_manager;
 pub mod constants;

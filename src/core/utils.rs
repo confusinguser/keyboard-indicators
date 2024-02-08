@@ -1,5 +1,13 @@
+use std::io;
+use std::path::PathBuf;
 use std::process::Stdio;
 
+use anyhow::bail;
+use clap::ArgMatches;
+use crossterm::event::{
+    DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+    PushKeyboardEnhancementFlags,
+};
 use rgb::{ComponentMap, RGB8, RGBA8};
 use tokio::process::{self, ChildStdout};
 
@@ -99,4 +107,68 @@ pub(crate) fn progress_bar_diff(
             .collect();
     }
     out
+}
+
+pub(crate) fn prepare_terminal_event_capture() -> anyhow::Result<()> {
+    let supports_keyboard_enhancement = matches!(
+        crossterm::terminal::supports_keyboard_enhancement(),
+        Ok(true)
+    );
+    let mut stdout = io::stdout();
+    crossterm::terminal::enable_raw_mode()?;
+
+    if supports_keyboard_enhancement {
+        crossterm::queue!(
+            stdout,
+            PushKeyboardEnhancementFlags(
+                // KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
+                // | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
+                 | KeyboardEnhancementFlags::REPORT_EVENT_TYPES,
+            )
+        )
+        .unwrap();
+    }
+    crossterm::execute!(
+        stdout,
+        // EnableBracketedPaste,
+        // EnableFocusChange,
+        EnableMouseCapture,
+    )
+    .unwrap();
+    Ok(())
+}
+
+pub(crate) fn default_terminal_settings() -> anyhow::Result<()> {
+    let supports_keyboard_enhancement = matches!(
+        crossterm::terminal::supports_keyboard_enhancement(),
+        Ok(true)
+    );
+    let mut stdout = io::stdout();
+    crossterm::terminal::disable_raw_mode()?;
+
+    if supports_keyboard_enhancement {
+        crossterm::queue!(stdout, PopKeyboardEnhancementFlags).unwrap();
+    }
+    crossterm::execute!(
+        stdout,
+        // EnableBracketedPaste,
+        // EnableFocusChange,
+        DisableMouseCapture,
+    )
+    .unwrap();
+    Ok(())
+}
+
+pub(crate) fn get_config_path(args: &ArgMatches) -> anyhow::Result<PathBuf> {
+    let keymap_path = match args.get_one::<PathBuf>("config") {
+        None => dirs::config_dir().map(|pathbuf| pathbuf.join("keyboard-indicators/keymap.yaml")),
+        Some(pathbuf) => Some(pathbuf.clone()),
+    };
+
+    let Some(config_path) = keymap_path else {
+        bail!("Could not find a path for config. Please specify your own");
+    };
+
+    Ok(config_path)
 }

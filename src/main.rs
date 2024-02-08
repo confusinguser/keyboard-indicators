@@ -5,40 +5,35 @@ use std::sync::Arc;
 use anyhow::bail;
 use clap::ArgMatches;
 
-use self::core::cli::{self};
+use self::cli::module_subcommand::module_subcommand;
 use self::core::config_manager::Configuration;
 use self::core::keyboard_controller::KeyboardController;
-use self::core::{config_creator, config_manager};
+use self::core::{config_creator, config_manager, utils};
 
+mod cli;
 mod core;
 mod modules;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let matches = cli::parse_args();
+    let matches = cli::main_command::parse_args();
+    // TODO: Avoid unwrap
     match matches.subcommand_name() {
         Some("start") => start(matches.subcommand().unwrap().1).await,
         Some("create-config") => create_config(matches.subcommand().unwrap().1).await,
-        Some("module") => create_config(matches.subcommand().unwrap().1).await,
+        Some("module") => module_subcommand(matches.subcommand().unwrap().1).await,
         _ => bail!("Unknown subcommand"),
     }
 }
 
 async fn create_config(args: &ArgMatches) -> anyhow::Result<()> {
-    let keymap_path = match args.get_one::<PathBuf>("config") {
-        None => dirs::config_dir().map(|pathbuf| pathbuf.join("keyboard-indicators/keymap.yaml")),
-        Some(pathbuf) => Some(pathbuf.clone()),
-    };
-
-    let Some(keymap_path) = keymap_path else {
-        bail!("Could not find a path for config. Please specify your own");
-    };
+    let config_path = utils::get_config_path(args)?;
     let keyboard_controller = KeyboardController::connect(Configuration::default()).await?;
     let new_config = config_creator::start_config_creator(
         &keyboard_controller,
         args.get_one::<u32>("ledlimit").copied(),
     )
     .await?;
-    config_manager::write_config(&keymap_path, &new_config)?;
+    config_manager::write_config(&config_path, &new_config)?;
     Ok(())
 }
 
