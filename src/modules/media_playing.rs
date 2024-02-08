@@ -79,7 +79,14 @@ impl MediaModule {
                                 .await;
                         }
                     }
-                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    tokio::select! {
+                         biased;
+                         _ = cancellation_token_clone.cancelled() => {
+                             break;
+                         }
+
+                         _ = tokio::time::sleep(Duration::from_millis(100)) => {}
+                    }
                     continue;
                 }
                 paused_since_last_time = false;

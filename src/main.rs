@@ -1,8 +1,10 @@
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::bail;
+use rgb::RGB8;
 use tokio::signal;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
@@ -11,6 +13,7 @@ use self::core::cli::{self, Cli, CreateConfigArgs, StartArgs};
 use self::core::config_manager::Configuration;
 use self::core::keyboard_controller::KeyboardController;
 use self::core::{config_creator, config_manager};
+use self::modules::starfield::{StarfieldModule, StarfieldModuleOptions};
 
 mod core;
 mod modules;
@@ -108,14 +111,5 @@ async fn start(args: StartArgs) -> anyhow::Result<()> {
 
     // Make sure to not exit if threads are open
     task_tracker.wait().await;
-
-    // WorkspacesModule::run(
-    //     arc.clone(),
-    //     vec![
-    //         24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
-    //     ],
-    // )
-    // .await
-    // .unwrap();
     Ok(())
 }
