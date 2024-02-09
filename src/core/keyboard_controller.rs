@@ -25,18 +25,18 @@ impl KeyboardController {
             .await
     }
 
-    pub(crate) async fn set_led(&self, x: u32, y: u32, color: Color) -> Result<(), OpenRGBError> {
-        let mut index = self.config.first_in_row[y as usize] + x;
-        for &skip_index in self.config.skip_indicies.iter() {
-            if skip_index <= index {
-                index += 1;
-            }
-        }
+    // pub(crate) async fn set_led(&self, x: u32, y: u32, color: Color) -> Result<(), OpenRGBError> {
+    //     let mut index = self.config.first_in_row[y as usize] + x;
+    //     for &skip_index in self.config.skip_indicies.iter() {
+    //         if skip_index <= index {
+    //             index += 1;
+    //         }
+    //     }
 
-        self.client
-            .update_led(self.controller_id, index as i32, color)
-            .await
-    }
+    //     self.client
+    //         .update_led(self.controller_id, index as i32, color)
+    //         .await
+    // }
 
     pub(crate) async fn connect(configuration: Configuration) -> anyhow::Result<Self> {
         let client = OpenRGB::connect().await;

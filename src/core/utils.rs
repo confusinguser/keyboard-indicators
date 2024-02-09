@@ -1,6 +1,15 @@
+use std::io::{self, Read, Write};
+use std::path::PathBuf;
 use std::process::Stdio;
 
-use rgb::{ComponentMap, RGB8, RGBA8};
+use anyhow::bail;
+use clap::ArgMatches;
+use crossterm::event::{
+    DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+    PushKeyboardEnhancementFlags,
+};
+use hsl::HSL;
+use rgb::{ComponentMap, RGB, RGB8, RGBA8};
 use tokio::process::{self, ChildStdout};
 
 pub(crate) fn run_command_async(command: &str) -> Option<ChildStdout> {
@@ -99,4 +108,116 @@ pub(crate) fn progress_bar_diff(
             .collect();
     }
     out
+}
+
+pub(crate) fn prepare_terminal_event_capture() -> anyhow::Result<()> {
+    let supports_keyboard_enhancement = matches!(
+        crossterm::terminal::supports_keyboard_enhancement(),
+        Ok(true)
+    );
+    let mut stdout = io::stdout();
+    crossterm::terminal::enable_raw_mode()?;
+
+    if supports_keyboard_enhancement {
+        crossterm::queue!(
+            stdout,
+            PushKeyboardEnhancementFlags(
+                // KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
+                // | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
+                 | KeyboardEnhancementFlags::REPORT_EVENT_TYPES,
+            )
+        )
+        .unwrap();
+    }
+    crossterm::execute!(
+        stdout,
+        // EnableBracketedPaste,
+        // EnableFocusChange,
+        EnableMouseCapture,
+    )
+    .unwrap();
+    Ok(())
+}
+
+pub(crate) fn default_terminal_settings() -> anyhow::Result<()> {
+    let supports_keyboard_enhancement = matches!(
+        crossterm::terminal::supports_keyboard_enhancement(),
+        Ok(true)
+    );
+    let mut stdout = io::stdout();
+    crossterm::terminal::disable_raw_mode()?;
+
+    if supports_keyboard_enhancement {
+        crossterm::queue!(stdout, PopKeyboardEnhancementFlags).unwrap();
+    }
+    crossterm::execute!(
+        stdout,
+        // EnableBracketedPaste,
+        // EnableFocusChange,
+        DisableMouseCapture,
+    )
+    .unwrap();
+    Ok(())
+}
+
+pub(crate) fn get_keymap_path(args: &ArgMatches) -> anyhow::Result<PathBuf> {
+    let keymap_path = match args.get_one::<PathBuf>("keymap") {
+        None => dirs::config_dir().map(|pathbuf| pathbuf.join("keyboard-indicators/keymap.yaml")),
+        Some(pathbuf) => Some(pathbuf.clone()),
+    };
+
+    let Some(keymap_path) = keymap_path else {
+        bail!("Could not find a path for keymap. Please specify your own");
+    };
+
+    Ok(keymap_path)
+}
+
+pub(crate) fn get_config_path(args: &ArgMatches) -> anyhow::Result<PathBuf> {
+    let keymap_path = match args.get_one::<PathBuf>("config") {
+        None => dirs::config_dir().map(|pathbuf| pathbuf.join("keyboard-indicators/config.yaml")),
+        Some(pathbuf) => Some(pathbuf.clone()),
+    };
+
+    let Some(config_path) = keymap_path else {
+        bail!("Could not find a path for config. Please specify your own");
+    };
+
+    Ok(config_path)
+}
+
+/// Creates a color list with `len` items and evenly divided around the color circle
+pub(crate) fn color_list(len: usize, saturation: f32, lightness: f32) -> Vec<openrgb::data::Color> {
+    // let mut curr_hue = rand::thread_rng().gen_range(0.0..360.);
+    let mut curr_hue = 0.;
+    let hue_step = 360. / len as f64;
+    let mut out = Vec::new();
+    for _ in 0..len {
+        let color = HSL {
+            h: curr_hue,
+            s: saturation as f64,
+            l: lightness as f64,
+        };
+        let color_rgb = RGB::from(color.to_rgb());
+        out.push(color_rgb);
+        curr_hue += hue_step;
+        if curr_hue >= 360. {
+            curr_hue -= 360.
+        }
+    }
+    out
+}
+
+pub(crate) fn pause_until_click() -> anyhow::Result<()> {
+    let mut stdin = io::stdin();
+    let mut stdout = io::stdout();
+
+    // We want the cursor to stay at the end of the line, so we print without a newline and flush manually.
+    print!("Press any key to continue...");
+    stdout.flush()?;
+
+    // Read a single byte and discard
+    let _ = stdin.read(&mut [0u8]).unwrap();
+    Ok(())
 }
