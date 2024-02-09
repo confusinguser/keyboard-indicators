@@ -8,7 +8,9 @@ use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
     PushKeyboardEnhancementFlags,
 };
-use rgb::{ComponentMap, RGB8, RGBA8};
+use hsl::HSL;
+use rand::Rng;
+use rgb::{ComponentMap, RGB, RGB8, RGBA8};
 use tokio::process::{self, ChildStdout};
 
 pub(crate) fn run_command_async(command: &str) -> Option<ChildStdout> {
@@ -171,4 +173,26 @@ pub(crate) fn get_config_path(args: &ArgMatches) -> anyhow::Result<PathBuf> {
     };
 
     Ok(config_path)
+}
+
+/// Creates a color list with `len` items and evenly divided around the color circle
+pub(crate) fn color_list(len: usize, saturation: f32, lightness: f32) -> Vec<openrgb::data::Color> {
+    // let mut curr_hue = rand::thread_rng().gen_range(0.0..360.);
+    let mut curr_hue = 0.;
+    let hue_step = 360. / len as f64;
+    let mut out = Vec::new();
+    for _ in 0..len {
+        let color = HSL {
+            h: curr_hue,
+            s: saturation as f64,
+            l: lightness as f64,
+        };
+        let color_rgb = RGB::from(color.to_rgb());
+        out.push(color_rgb);
+        curr_hue += hue_step;
+        if curr_hue >= 360. {
+            curr_hue -= 360.
+        }
+    }
+    out
 }

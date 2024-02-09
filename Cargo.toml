@@ -20,3 +20,4 @@ rgb = "0.8.37"
 clap = { version = "^4.4", features = ["derive", "cargo"] }
 dirs = "5.0.1"
 souvlaki = { version = "0.7.0", default-features = false, features = ["use_zbus"] }
+hsl = "0.1.1"

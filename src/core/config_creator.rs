@@ -15,7 +15,9 @@ pub(crate) async fn start_config_creator(
     let mut config = Configuration::default();
     println!("Press every key as it lights up. If no key lights up, press LMB. If no reaction is given when key is pressed, press RMB");
     build_key_led_map(keyboard_controller, &mut config, led_limit).await?;
-    println!("Press the first keys of every row. In order. When all of them have been pressed, press LMB");
+    println!(
+        "Press the first key of every row. In order. When all of them have been pressed, press LMB"
+    );
     build_first_in_row(keyboard_controller, &mut config).await?;
     println!("Now, we're going to place the modules");
     module_subcommand::add(keyboard_controller, &mut config).await?;
@@ -115,4 +117,18 @@ async fn build_key_led_map(
     }
     default_terminal_settings()?;
     Ok(())
+}
+
+pub(crate) async fn create_keymap(
+    keyboard_controller: &KeyboardController,
+    led_limit: Option<u32>,
+) -> anyhow::Result<Configuration> {
+    let mut config = Configuration::default();
+    println!("Press every key as it lights up. If no key lights up, press LMB. If no reaction is given when key is pressed, press RMB");
+    build_key_led_map(keyboard_controller, &mut config, led_limit).await?;
+    println!(
+        "Press the first key of every row. In order. When all of them have been pressed, press LMB"
+    );
+    build_first_in_row(keyboard_controller, &mut config).await?;
+    Ok(config)
 }

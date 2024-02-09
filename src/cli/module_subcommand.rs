@@ -1,5 +1,4 @@
-use std::io::{self, BufRead};
-use std::path::PathBuf;
+use std::io::{self, BufRead, Write};
 
 use anyhow::bail;
 use clap::ArgMatches;
@@ -11,17 +10,20 @@ use crate::core::keyboard_controller::KeyboardController;
 use crate::core::module::{Module, ModuleType};
 use crate::core::utils::{self, default_terminal_settings, prepare_terminal_event_capture};
 
-pub async fn module_subcommand(args: &ArgMatches) -> anyhow::Result<()> {
-    let mut config = config_manager::read_config(&utils::get_config_path(args)?)?;
+pub async fn module(args: &ArgMatches) -> anyhow::Result<()> {
+    let config_path = utils::get_config_path(args)?;
+    let mut config = config_manager::read_config(&config_path)?;
     let keyboard_controller = KeyboardController::connect(Configuration::default()).await?;
 
     match args.subcommand_name() {
         Some("add") => add(&keyboard_controller, &mut config).await?,
-        Some("remove") => todo!(),
+        Some("remove") => remove(&keyboard_controller, &mut config).await?,
         Some("info") => todo!(),
         Some("modify") => todo!(),
         _ => todo!(),
     }
+
+    config_manager::write_config(&config_path, &config)?;
 
     Ok(())
 }
@@ -102,4 +104,130 @@ fn choose_module_to_add() -> anyhow::Result<ModuleType> {
         return Ok(all_module_types[number_chosen - 1]);
     }
     bail!("No option chosen");
+}
+
+async fn highlight_all_modules(
+    keyboard_controller: &KeyboardController,
+    config: &mut Configuration,
+) -> anyhow::Result<()> {
+    keyboard_controller.turn_all_off().await?;
+    let colors = utils::color_list(config.modules.len(), 255., 255.);
+    for (i, module) in config.modules.iter().enumerate() {
+        for led in &module.module_leds {
+            let color = colors[i];
+            if let Some(led) = led {
+                keyboard_controller.set_led_by_index(*led, color).await?;
+            }
+        }
+    }
+    Ok(())
+}
+
+async fn highlight_one_module(
+    keyboard_controller: &KeyboardController,
+    num_modules: usize,
+    module_index: usize,
+    module: &Module,
+) -> anyhow::Result<()> {
+    keyboard_controller.turn_all_off().await?;
+    let colors = utils::color_list(num_modules, 255., 255.);
+    for led in &module.module_leds {
+        let color = colors[module_index];
+        if let Some(led) = led {
+            keyboard_controller.set_led_by_index(*led, color).await?;
+        }
+    }
+    Ok(())
+}
+
+pub async fn remove(
+    keyboard_controller: &KeyboardController,
+    config: &mut Configuration,
+) -> anyhow::Result<()> {
+    println!("Choose a module to remove by clicking on a button in it");
+    highlight_all_modules(keyboard_controller, config).await?;
+
+    utils::prepare_terminal_event_capture()?;
+    loop {
+        let event = crossterm::event::read().unwrap();
+        if let Event::Key(event) = event {
+            if event.kind != crossterm::event::KeyEventKind::Press {
+                continue;
+            }
+            if event.modifiers.intersects(KeyModifiers::CONTROL) && event.code == KeyCode::Char('c')
+            {
+                default_terminal_settings()?;
+                panic!("Interrupted by user");
+            }
+            default_terminal_settings()?;
+            if let Some(&index_pressed) = config.key_led_map.get(&event.code) {
+                let mut module_to_remove = None;
+                for (i, module) in config.modules.iter().enumerate() {
+                    for led in &module.module_leds {
+                        let Some(led) = led else {
+                            continue;
+                        };
+                        if index_pressed == *led {
+                            module_to_remove = Some((i, module));
+                            break;
+                        }
+                    }
+                    if module_to_remove.is_some() {
+                        break;
+                    }
+                }
+                if let Some(module_to_remove) = module_to_remove {
+                    let module_removal_confirmed = confirm_module_removal(
+                        keyboard_controller,
+                        config.modules.len(),
+                        module_to_remove.0,
+                        module_to_remove.1,
+                    )
+                    .await?;
+
+                    if module_removal_confirmed {
+                        config.modules.remove(module_to_remove.0);
+                    }
+                    keyboard_controller.turn_all_off().await?;
+                    break;
+                } else {
+                    println!("This button is not tied to a module");
+                }
+            } else {
+                println!("This button is not tied to an LED");
+            }
+            prepare_terminal_event_capture()?;
+        }
+    }
+    default_terminal_settings()?;
+    Ok(())
+}
+
+async fn confirm_module_removal(
+    keyboard_controller: &KeyboardController,
+    num_modules: usize,
+    module_index: usize,
+    module: &Module,
+) -> anyhow::Result<bool> {
+    keyboard_controller.turn_all_off().await?;
+    highlight_one_module(keyboard_controller, num_modules, module_index, module).await?;
+
+    println!(
+        "Module: {}\nDescription: {}",
+        module.module_type.name(),
+        module.module_type.desc()
+    );
+    print!("Are you sure you want to remove this module? [y/N] ");
+    io::stdout().flush()?;
+    let stdin = io::stdin();
+    let line = stdin
+        .lock()
+        .lines()
+        .next()
+        .unwrap_or(Ok(String::default()))?;
+    if line.to_lowercase() == "y" {
+        return Ok(true);
+    }
+
+    Ok(false)
 }
