@@ -4,6 +4,8 @@ use anyhow::{bail, Context};
 use openrgb::data::Color;
 use rgb::{ComponentMap, RGB};
 use swayipc_async::{Connection, EventType, WorkspaceChange, WorkspaceEvent};
+use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 
 use crate::core::keyboard_controller::KeyboardController;
 use crate::core::{constants, utils};
@@ -13,11 +15,12 @@ pub(crate) struct WorkspacesModule {}
 
 impl WorkspacesModule {
     pub fn run(
+        task_tracker: &TaskTracker,
+        cancellation_token: CancellationToken,
         keyboard_controller: Arc<KeyboardController>,
         leds_order: Vec<Option<u32>>,
-    ) -> Vec<tokio::task::JoinHandle<()>> {
-        let mut handles = Vec::with_capacity(1);
-        let handle = tokio::spawn(async move {
+    ) {
+        task_tracker.spawn(async move {
             let Ok(sway_client) = Connection::new().await else {
                 eprintln!("Failed to connect to Sway socket");
                 return;
@@ -28,8 +31,17 @@ impl WorkspacesModule {
             };
             println!("Subscribed to Sway events");
             loop {
-                let Some(Ok(message)) = receiver.next().await else {
-                    continue;
+                let message = tokio::select! {
+                    biased;
+                    _ = cancellation_token.cancelled() => {
+                        break;
+                    }
+                    message = receiver.next() => {
+                        let Some(Ok(message)) = message else {
+                            continue;
+                        };
+                        message
+                    }
                 };
                 match message {
                     swayipc_async::Event::Workspace(workspace_event) => {
@@ -54,14 +66,8 @@ impl WorkspacesModule {
                     swayipc_async::Event::Input(_) => todo!(),
                     _ => {}
                 };
-                // let Ok(event) = serde_json::from_slice(&message) else {
-                //     eprintln!("Message received from Sway not valid serialised json");
-                //     continue;
-                // };
             }
         });
-        handles.push(handle);
-        handles
     }
 }
 

@@ -2,8 +2,11 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
+use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 
 use crate::modules::media_playing::MediaModule;
+use crate::modules::starfield::{StarfieldModule, StarfieldModuleOptions};
 use crate::modules::workspaces::WorkspacesModule;
 
 use super::keyboard_controller::KeyboardController;
@@ -26,17 +29,37 @@ impl Module {
 pub(crate) enum ModuleType {
     WorkspacesModule,
     MediaModule,
+    StarfieldModule(StarfieldModuleOptions),
 }
 
 impl ModuleType {
     pub(crate) fn run(
         &self,
+        task_tracker: &TaskTracker,
+        cancellation_token: CancellationToken,
         keyboard_controller: Arc<KeyboardController>,
         module_leds: Vec<Option<u32>>,
-    ) -> Vec<JoinHandle<()>> {
+    ) {
         match self {
-            ModuleType::WorkspacesModule => WorkspacesModule::run(keyboard_controller, module_leds),
-            ModuleType::MediaModule => MediaModule::run(keyboard_controller, module_leds),
+            ModuleType::WorkspacesModule => WorkspacesModule::run(
+                task_tracker,
+                cancellation_token,
+                keyboard_controller,
+                module_leds,
+            ),
+            ModuleType::MediaModule => MediaModule::run(
+                task_tracker,
+                cancellation_token,
+                keyboard_controller,
+                module_leds,
+            ),
+            ModuleType::StarfieldModule(opts) => StarfieldModule::run(
+                task_tracker,
+                cancellation_token,
+                keyboard_controller,
+                module_leds,
+                *opts,
+            ),
         }
     }
 
@@ -44,12 +67,14 @@ impl ModuleType {
         match self {
             ModuleType::WorkspacesModule => "Sway Workspaces",
             ModuleType::MediaModule => "Media Player Monitor",
+            ModuleType::StarfieldModule(_) => "Starfield Ambient Module",
         }
     }
     pub(crate) fn desc(&self) -> &'static str {
         match self {
             ModuleType::WorkspacesModule => "",
             ModuleType::MediaModule => "Shows media playhead and platform on keyboard",
+            ModuleType::StarfieldModule(_) => "",
         }
     }
 

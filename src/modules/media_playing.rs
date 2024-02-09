@@ -2,6 +2,8 @@ use rgb::{ComponentMap, RGB8};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 
 use crate::core::keyboard_controller::KeyboardController;
 use crate::core::{constants, utils};
@@ -10,24 +12,33 @@ pub(crate) struct MediaModule {}
 
 impl MediaModule {
     pub(crate) fn run(
+        task_tracker: &TaskTracker,
+        cancellation_token: CancellationToken,
         keyboard_controller: Arc<KeyboardController>,
         module_leds: Vec<Option<u32>>,
-    ) -> Vec<tokio::task::JoinHandle<()>> {
-        let mut handles = Vec::new();
+    ) {
         let track_duration: Arc<Mutex<Option<Duration>>> = Arc::new(Mutex::new(None));
         let track_duration_clone = track_duration.clone();
-        let metadata_listener = tokio::spawn(async {
+        let cancellation_token_clone = cancellation_token.clone();
+        // Metadata Listener
+        task_tracker.spawn(async move {
             let track_duration = track_duration_clone;
             let stdout = utils::run_command_async("playerctl metadata -F")
                 .expect("run_command_async returned None in metadata_listener");
             let mut buffer = BufReader::new(stdout).lines();
             loop {
-                let Ok(Some(metadata_line)) = buffer
-                    .next_line()
-                    .await
-                    .map_err(|err| eprintln!("Failed to get next line of metadata. {}", err))
-                else {
-                    continue;
+                let metadata_line = tokio::select! {
+                    biased;
+                    _ = cancellation_token_clone.cancelled() => {
+                        break;
+                    }
+                    metadata_line = buffer.next_line() => {
+                        let Ok(Some(message)) = metadata_line else {
+                            eprintln!("Failed to get next line of metadata. {}", metadata_line.unwrap_err());
+                            continue;
+                        };
+                        message
+                    }
                 };
                 if metadata_line.contains("length") {
                     let Some(Ok(length)) = utils::run_command("playerctl metadata mpris:length")
@@ -46,8 +57,10 @@ impl MediaModule {
                 }
             }
         });
-        handles.push(metadata_listener);
-        let handle = tokio::spawn(async move {
+
+        let cancellation_token_clone = cancellation_token.clone();
+        // The thread that changes the colors
+        task_tracker.spawn(async move {
             let mut paused_since_last_time = false;
             let mut last_progress = None;
             loop {
@@ -66,7 +79,14 @@ impl MediaModule {
                                 .await;
                         }
                     }
-                    tokio::time::sleep(Duration::from_millis(100)).await;
+                    tokio::select! {
+                         biased;
+                         _ = cancellation_token_clone.cancelled() => {
+                             break;
+                         }
+
+                         _ = tokio::time::sleep(Duration::from_millis(100)) => {}
+                    }
                     continue;
                 }
                 paused_since_last_time = false;
@@ -85,6 +105,7 @@ impl MediaModule {
                 let current_position = Duration::from_micros((current_position * 1e6_f32) as u64);
 
                 let progress;
+                // We need to drop lock before awaiting something
                 {
                     let track_duration_value = track_duration
                         .lock()
@@ -117,11 +138,16 @@ impl MediaModule {
                     }
                 }
                 last_progress = Some(progress);
-                tokio::time::sleep(Duration::from_millis(100)).await;
+                tokio::select! {
+                     biased;
+                     _ = cancellation_token_clone.cancelled() => {
+                         break;
+                     }
+
+                     _ = tokio::time::sleep(Duration::from_millis(100)) => {}
+                }
             }
         });
-        handles.push(handle);
-        handles
     }
 }
 

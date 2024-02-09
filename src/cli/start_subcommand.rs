@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
 use clap::ArgMatches;
+use tokio::signal;
+use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 
 use crate::core::config_manager;
 use crate::core::keyboard_controller::KeyboardController;
@@ -9,28 +12,32 @@ pub(crate) async fn start(args: &ArgMatches) -> anyhow::Result<()> {
     let config = config_manager::read_config_and_keymap_from_args(args)?;
     let keyboard_controller = KeyboardController::connect(config).await?;
 
+    let cancellation_token = CancellationToken::new();
     keyboard_controller.turn_all_off().await?;
     let keyboard_controller = Arc::new(keyboard_controller);
-    let mut join_hooks = Vec::new();
+    let task_tracker = TaskTracker::new();
     for module in &keyboard_controller.config.modules {
-        join_hooks.append(
-            &mut module
-                .module_type
-                .run(keyboard_controller.clone(), module.module_leds.clone()),
+        module.module_type.run(
+            &task_tracker,
+            cancellation_token.clone(),
+            keyboard_controller.clone(),
+            module.module_leds.clone(),
         );
     }
 
-    // Make sure to not exit if threads are open
-    for hook in join_hooks {
-        hook.await?;
+    task_tracker.close();
+
+    match signal::ctrl_c().await {
+        Ok(_) => {
+            cancellation_token.cancel();
+        }
+        Err(_) => {
+            println!("Cannot receive Ctrl C signals, shutting down");
+            cancellation_token.cancel();
+        }
     }
-    // WorkspacesModule::run(
-    //     arc.clone(),
-    //     vec![
-    //         24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
-    //     ],
-    // )
-    // .await
-    // .unwrap();
+
+    // Make sure to not exit if threads are open
+    task_tracker.wait().await;
     Ok(())
 }
