@@ -1,4 +1,4 @@
-use std::io;
+use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::process::Stdio;
 
@@ -207,4 +207,17 @@ pub(crate) fn color_list(len: usize, saturation: f32, lightness: f32) -> Vec<ope
         }
     }
     out
+}
+
+pub(crate) fn pause_until_click() -> anyhow::Result<()> {
+    let mut stdin = io::stdin();
+    let mut stdout = io::stdout();
+
+    // We want the cursor to stay at the end of the line, so we print without a newline and flush manually.
+    print!("Press any key to continue...");
+    stdout.flush()?;
+
+    // Read a single byte and discard
+    let _ = stdin.read(&mut [0u8]).unwrap();
+    Ok(())
 }
