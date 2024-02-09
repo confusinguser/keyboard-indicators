@@ -1,6 +1,6 @@
 use std::io::{self, BufRead, Write};
 
-use anyhow::bail;
+use anyhow::{bail, Context};
 use clap::ArgMatches;
 use crossterm::event::{Event, KeyCode, KeyModifiers, MouseButton, MouseEventKind};
 use openrgb::data::Color;
@@ -12,7 +12,8 @@ use crate::core::utils::{self, default_terminal_settings, prepare_terminal_event
 
 pub async fn module(args: &ArgMatches) -> anyhow::Result<()> {
     let config_path = utils::get_config_path(args)?;
-    let mut config = config_manager::read_config(&config_path)?;
+    let keymap_path = utils::get_keymap_path(args)?;
+    let mut config = config_manager::read_config_and_keymap(&config_path, &keymap_path)?;
     let keyboard_controller = KeyboardController::connect(Configuration::default()).await?;
 
     match args.subcommand_name() {
@@ -23,7 +24,7 @@ pub async fn module(args: &ArgMatches) -> anyhow::Result<()> {
         _ => todo!(),
     }
 
-    config_manager::write_config(&config_path, &config)?;
+    config_manager::write_config_and_keymap(&config_path, &keymap_path, &config)?;
 
     Ok(())
 }
@@ -59,7 +60,7 @@ async fn add_module(
                 panic!("Interrupted by user");
             }
             default_terminal_settings()?;
-            if let Some(&index_pressed) = config.key_led_map.get(&event.code) {
+            if let Some(&index_pressed) = config.keymap.key_led_map.get(&event.code) {
                 module_leds.push(Some(index_pressed));
                 keyboard_controller
                     .set_led_by_index(index_pressed, Color::new(255, 255, 255))
@@ -160,7 +161,7 @@ pub async fn remove(
                 panic!("Interrupted by user");
             }
             default_terminal_settings()?;
-            if let Some(&index_pressed) = config.key_led_map.get(&event.code) {
+            if let Some(&index_pressed) = config.keymap.key_led_map.get(&event.code) {
                 let mut module_to_remove = None;
                 for (i, module) in config.modules.iter().enumerate() {
                     for led in &module.module_leds {

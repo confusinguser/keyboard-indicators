@@ -59,30 +59,27 @@ pub(crate) async fn main_command(matches: ArgMatches) -> anyhow::Result<()> {
 }
 
 async fn create_config(args: &ArgMatches) -> anyhow::Result<()> {
-    let config_path = utils::get_config_path(args)?;
     let keyboard_controller = KeyboardController::connect(Configuration::default()).await?;
     let new_config = config_creator::start_config_creator(
         &keyboard_controller,
         args.get_one::<u32>("ledlimit").copied(),
     )
     .await?;
-    config_manager::write_config(&config_path, &new_config)?;
+    config_manager::write_config_and_keymap_from_args(args, &new_config)?;
     Ok(())
 }
 
 async fn create_keymap(args: &ArgMatches) -> anyhow::Result<()> {
-    let config_path = utils::get_config_path(args)?;
-    let mut config = config_manager::read_config(&config_path)?;
+    // TODO Confirm that the user wants to do this
+    let keymap_path = utils::get_keymap_path(args)?;
     let keyboard_controller = KeyboardController::connect(Configuration::default()).await?;
-    let new_config = config_creator::create_keymap(
+    let new_keymap = config_creator::create_keymap(
         &keyboard_controller,
         args.get_one::<u32>("ledlimit").copied(),
     )
     .await?;
-    config.key_led_map = new_config.key_led_map;
-    config.first_in_row = new_config.first_in_row;
 
-    config_manager::write_config(&config_path, &config)?;
+    config_manager::write_keymap(&keymap_path, &new_keymap)?;
     println!("The keymap has been saved. You can now use the module command to configure modules");
     Ok(())
 }

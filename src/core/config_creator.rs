@@ -3,6 +3,7 @@ use openrgb::data::Color;
 
 use crate::cli::module_subcommand;
 use crate::core::config_manager::Configuration;
+use crate::core::keymap::Keymap;
 use crate::core::utils::default_terminal_settings;
 
 use super::keyboard_controller::KeyboardController;
@@ -14,11 +15,11 @@ pub(crate) async fn start_config_creator(
 ) -> anyhow::Result<Configuration> {
     let mut config = Configuration::default();
     println!("Press every key as it lights up. If no key lights up, press LMB. If no reaction is given when key is pressed, press RMB");
-    build_key_led_map(keyboard_controller, &mut config, led_limit).await?;
+    build_key_led_map(keyboard_controller, &mut config.keymap, led_limit).await?;
     println!(
         "Press the first key of every row. In order. When all of them have been pressed, press LMB"
     );
-    build_first_in_row(keyboard_controller, &mut config).await?;
+    build_first_in_row(keyboard_controller, &mut config.keymap).await?;
     println!("Now, we're going to place the modules");
     module_subcommand::add(keyboard_controller, &mut config).await?;
     Ok(config)
@@ -26,7 +27,7 @@ pub(crate) async fn start_config_creator(
 
 async fn build_first_in_row(
     keyboard_controller: &KeyboardController,
-    config: &mut Configuration,
+    keymap: &mut Keymap,
 ) -> anyhow::Result<()> {
     prepare_terminal_event_capture()?;
     keyboard_controller.turn_all_off().await?;
@@ -41,8 +42,8 @@ async fn build_first_in_row(
                 default_terminal_settings()?;
                 panic!("Interrupted by user");
             }
-            if let Some(&index_pressed) = config.key_led_map.get(&event.code) {
-                config.first_in_row.push(index_pressed);
+            if let Some(&index_pressed) = keymap.key_led_map.get(&event.code) {
+                keymap.first_in_row.push(index_pressed);
                 keyboard_controller
                     .set_led_by_index(index_pressed, Color::new(255, 255, 255))
                     .await?;
@@ -55,7 +56,7 @@ async fn build_first_in_row(
         if let Event::Mouse(event) = event {
             if event.kind == MouseEventKind::Down(MouseButton::Left) {
                 default_terminal_settings()?;
-                println!("Great. There are {} rows", config.first_in_row.len());
+                println!("Great. There are {} rows", keymap.first_in_row.len());
                 keyboard_controller.turn_all_off().await?;
                 break;
             }
@@ -67,7 +68,7 @@ async fn build_first_in_row(
 
 async fn build_key_led_map(
     keyboard_controller: &KeyboardController,
-    config: &mut Configuration,
+    keymap: &mut Keymap,
     led_limit: Option<u32>,
 ) -> anyhow::Result<()> {
     prepare_terminal_event_capture()?;
@@ -98,14 +99,14 @@ async fn build_key_led_map(
                         default_terminal_settings()?;
                         panic!("Interrupted by user");
                     }
-                    config.key_led_map.insert(event.code, index);
+                    keymap.key_led_map.insert(event.code, index);
                     break;
                 }
 
                 Event::Mouse(event) => match event.kind {
                     MouseEventKind::Down(mouse_button) => {
                         if mouse_button == MouseButton::Left {
-                            config.skip_indicies.insert(index);
+                            keymap.skip_indicies.insert(index);
                         }
                         break;
                     }
@@ -122,13 +123,13 @@ async fn build_key_led_map(
 pub(crate) async fn create_keymap(
     keyboard_controller: &KeyboardController,
     led_limit: Option<u32>,
-) -> anyhow::Result<Configuration> {
-    let mut config = Configuration::default();
+) -> anyhow::Result<Keymap> {
+    let mut keymap = Keymap::default();
     println!("Press every key as it lights up. If no key lights up, press LMB. If no reaction is given when key is pressed, press RMB");
-    build_key_led_map(keyboard_controller, &mut config, led_limit).await?;
+    build_key_led_map(keyboard_controller, &mut keymap, led_limit).await?;
     println!(
         "Press the first key of every row. In order. When all of them have been pressed, press LMB"
     );
-    build_first_in_row(keyboard_controller, &mut config).await?;
-    Ok(config)
+    build_first_in_row(keyboard_controller, &mut keymap).await?;
+    Ok(keymap)
 }

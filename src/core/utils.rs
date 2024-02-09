@@ -9,7 +9,6 @@ use crossterm::event::{
     PushKeyboardEnhancementFlags,
 };
 use hsl::HSL;
-use rand::Rng;
 use rgb::{ComponentMap, RGB, RGB8, RGBA8};
 use tokio::process::{self, ChildStdout};
 
@@ -162,9 +161,22 @@ pub(crate) fn default_terminal_settings() -> anyhow::Result<()> {
     Ok(())
 }
 
+pub(crate) fn get_keymap_path(args: &ArgMatches) -> anyhow::Result<PathBuf> {
+    let keymap_path = match args.get_one::<PathBuf>("keymap") {
+        None => dirs::config_dir().map(|pathbuf| pathbuf.join("keyboard-indicators/keymap.yaml")),
+        Some(pathbuf) => Some(pathbuf.clone()),
+    };
+
+    let Some(keymap_path) = keymap_path else {
+        bail!("Could not find a path for keymap. Please specify your own");
+    };
+
+    Ok(keymap_path)
+}
+
 pub(crate) fn get_config_path(args: &ArgMatches) -> anyhow::Result<PathBuf> {
     let keymap_path = match args.get_one::<PathBuf>("config") {
-        None => dirs::config_dir().map(|pathbuf| pathbuf.join("keyboard-indicators/keymap.yaml")),
+        None => dirs::config_dir().map(|pathbuf| pathbuf.join("keyboard-indicators/config.yaml")),
         Some(pathbuf) => Some(pathbuf.clone()),
     };
 
