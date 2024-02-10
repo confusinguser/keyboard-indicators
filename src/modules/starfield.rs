@@ -3,7 +3,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use hsv::hsv_to_rgb;
-use rand::distributions::{Bernoulli, Distribution};
 use rand::Rng;
 use rgb::{ComponentMap, RGB, RGB8};
 use serde::{Deserialize, Serialize};
@@ -19,6 +18,8 @@ pub(crate) struct StarfieldModuleOptions {
     pub(crate) target_color: RGB8,
     pub(crate) probability: f64,
     pub(crate) animation_time: Duration,
+    #[serde(default)]
+    pub(crate) time_variation: f32,
 }
 
 impl Default for StarfieldModuleOptions {
@@ -29,6 +30,7 @@ impl Default for StarfieldModuleOptions {
             target_color: RGB::from(hsv_to_rgb(44., 0.99, 0.99)),
             probability: 0.0,
             animation_time: Duration::from_secs(2),
+            time_variation: 0.5,
         }
     }
 }
@@ -45,21 +47,10 @@ impl StarfieldModule {
     ) {
         let options = StarfieldModuleOptions::default();
         task_tracker.spawn(async move {
-            let bernoulli = Bernoulli::new(options.probability);
-            let Ok(bernoulli) = bernoulli else {
-                eprintln!(
-                    "Bernoulli distribution creation gave error: {}",
-                    bernoulli.unwrap_err()
-                );
-                return;
-            };
             // The value in the map is how far along the LED has gotten in the animation
-            let mut currently_in_animation: HashMap<u32, f32> = HashMap::new();
+            let mut leds_animation: HashMap<u32, f32> = HashMap::new();
             for led in module_leds.iter().flatten() {
-                keyboard_controller
-                    .set_led_by_index(*led, options.background)
-                    .await
-                    .unwrap();
+                leds_animation.insert(*led, rand::thread_rng().gen_range(0_f32..1.));
             }
 
             let mut last_update = Instant::now();
@@ -68,18 +59,9 @@ impl StarfieldModule {
                     println!("Exiting starfield");
                     break;
                 }
-                if bernoulli.sample(&mut rand::thread_rng())
-                    || currently_in_animation.len() < options.min_currently_in_animation as usize
-                {
-                    let random_led =
-                        pick_random_led_not_in_animation(&module_leds, &currently_in_animation);
-                    if let Some(random_led) = random_led {
-                        currently_in_animation.insert(random_led, 0.);
-                    }
-                }
 
                 let now = Instant::now();
-                for (led, progress) in currently_in_animation.iter_mut() {
+                for (led, progress) in leds_animation.iter_mut() {
                     keyboard_controller
                         .set_led_by_index(
                             *led,
@@ -87,40 +69,20 @@ impl StarfieldModule {
                         )
                         .await
                         .unwrap();
-                    *progress +=
-                        (now - last_update).as_secs_f32() / options.animation_time.as_secs_f32();
+                    *progress += (now - last_update).as_secs_f32()
+                        / (options.animation_time.as_secs_f32()
+                            + rand::thread_rng()
+                                .gen_range(-options.time_variation..options.time_variation));
+                    if *progress >= 1. {
+                        *progress %= 1.;
+                    }
                 }
 
-                currently_in_animation.retain(|_, progress| *progress <= 1.);
-
                 last_update = Instant::now();
-                tokio::time::sleep(Duration::from_millis(100)).await;
+                tokio::time::sleep(Duration::from_millis(1000)).await;
             }
         });
     }
-}
-
-fn pick_random_led_not_in_animation(
-    module_leds: &Vec<Option<u32>>,
-    currently_in_animation: &HashMap<u32, f32>,
-) -> Option<u32> {
-    if currently_in_animation.len() >= module_leds.len() {
-        return None;
-    }
-    let random_led =
-        rand::thread_rng().gen_range(0..(module_leds.len() - currently_in_animation.len()) as u32);
-    let mut count = 0;
-    for led in module_leds {
-        // TODO guarantee no None in it
-        let led = led.unwrap();
-        if !currently_in_animation.contains_key(&led) {
-            if count >= random_led {
-                return Some(led);
-            }
-            count += 1;
-        }
-    }
-    None
 }
 
 fn interpolate(from: RGB8, to: RGB8, progress: f32) -> rgb::RGB<u8> {
