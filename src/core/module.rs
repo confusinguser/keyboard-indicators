@@ -26,9 +26,9 @@ impl Module {
 
 #[derive(Serialize, Debug, Copy, Clone, Deserialize)]
 pub(crate) enum ModuleType {
-    WorkspacesModule,
-    MediaModule,
-    StarfieldModule(StarfieldModuleOptions),
+    Workspaces,
+    Media,
+    Starfield(StarfieldModuleOptions),
 }
 
 impl ModuleType {
@@ -40,19 +40,19 @@ impl ModuleType {
         module_leds: Vec<Option<u32>>,
     ) {
         match self {
-            ModuleType::WorkspacesModule => WorkspacesModule::run(
+            ModuleType::Workspaces => WorkspacesModule::run(
                 task_tracker,
                 cancellation_token,
                 keyboard_controller,
                 module_leds,
             ),
-            ModuleType::MediaModule => MediaModule::run(
+            ModuleType::Media => MediaModule::run(
                 task_tracker,
                 cancellation_token,
                 keyboard_controller,
                 module_leds,
             ),
-            ModuleType::StarfieldModule(opts) => StarfieldModule::run(
+            ModuleType::Starfield(opts) => StarfieldModule::run(
                 task_tracker,
                 cancellation_token,
                 keyboard_controller,
@@ -64,24 +64,24 @@ impl ModuleType {
 
     pub(crate) fn name(&self) -> &'static str {
         match self {
-            ModuleType::WorkspacesModule => "Sway Workspaces",
-            ModuleType::MediaModule => "Media Player Monitor",
-            ModuleType::StarfieldModule(_) => "Starfield Ambient Module",
+            ModuleType::Workspaces => "Sway Workspaces",
+            ModuleType::Media => "Media Player Monitor",
+            ModuleType::Starfield(_) => "Starfield Ambient Module",
         }
     }
     pub(crate) fn desc(&self) -> &'static str {
         match self {
-            ModuleType::WorkspacesModule => "",
-            ModuleType::MediaModule => "Shows media playhead and platform on keyboard",
-            ModuleType::StarfieldModule(_) => "",
+            ModuleType::Workspaces => "",
+            ModuleType::Media => "Shows media playhead and platform on keyboard",
+            ModuleType::Starfield(_) => "",
         }
     }
 
     pub(crate) fn all_module_types() -> [ModuleType; 3] {
         [
-            ModuleType::WorkspacesModule,
-            ModuleType::MediaModule,
-            ModuleType::StarfieldModule(StarfieldModuleOptions::default()),
+            ModuleType::Workspaces,
+            ModuleType::Media,
+            ModuleType::Starfield(StarfieldModuleOptions::default()),
         ]
     }
 }
