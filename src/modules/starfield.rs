@@ -1,11 +1,12 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use hsv::hsv_to_rgb;
+use openrgb::data::Color;
 use rand::Rng;
 use rgb::{ComponentMap, RGB, RGB8};
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc::Sender;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
@@ -41,7 +42,7 @@ impl StarfieldModule {
     pub fn run(
         task_tracker: &TaskTracker,
         cancellation_token: CancellationToken,
-        keyboard_controller: Arc<KeyboardController>,
+        mut sender: Sender<(u32, Color)>,
         module_leds: Vec<Option<u32>>,
         options: StarfieldModuleOptions,
     ) {
@@ -62,13 +63,13 @@ impl StarfieldModule {
 
                 let now = Instant::now();
                 for (led, progress) in leds_animation.iter_mut() {
-                    keyboard_controller
-                        .update_led_urgent(
-                            *led,
-                            animation_curve(options.background, options.target_color, *progress),
-                        )
-                        .await
-                        .unwrap();
+                    KeyboardController::update_led(
+                        &mut sender,
+                        *led,
+                        animation_curve(options.background, options.target_color, *progress),
+                    )
+                    .await
+                    .unwrap();
                     *progress += (now - last_update).as_secs_f32()
                         / (options.animation_time.as_secs_f32()
                             + rand::thread_rng()
@@ -79,7 +80,7 @@ impl StarfieldModule {
                 }
 
                 last_update = Instant::now();
-                tokio::time::sleep(Duration::from_millis(1000)).await;
+                tokio::time::sleep(Duration::from_millis(100)).await;
             }
         });
     }
