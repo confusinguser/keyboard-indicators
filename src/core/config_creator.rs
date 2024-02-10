@@ -45,7 +45,7 @@ async fn build_first_in_row(
             if let Some(&index_pressed) = keymap.key_led_map.get(&event.code) {
                 keymap.first_in_row.push(index_pressed);
                 keyboard_controller
-                    .set_led_by_index(index_pressed, Color::new(255, 255, 255))
+                    .update_led_urgent(index_pressed, Color::new(255, 255, 255))
                     .await?;
             } else {
                 default_terminal_settings()?;
@@ -80,11 +80,11 @@ async fn build_key_led_map(
     {
         if index != 0 {
             keyboard_controller
-                .set_led_by_index(index - 1, Color::new(0, 0, 0))
+                .update_led_urgent(index - 1, Color::new(0, 0, 0))
                 .await?;
         }
         keyboard_controller
-            .set_led_by_index(index, Color::new(255, 255, 255))
+            .update_led_urgent(index, Color::new(255, 255, 255))
             .await?;
         loop {
             let event = crossterm::event::read().unwrap();

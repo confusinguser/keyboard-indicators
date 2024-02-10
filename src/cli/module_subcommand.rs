@@ -17,7 +17,7 @@ pub async fn module(args: &ArgMatches) -> anyhow::Result<()> {
     let config_path = utils::get_config_path(args)?;
     let keymap_path = utils::get_keymap_path(args)?;
     let mut config = config_manager::read_config_and_keymap(&config_path, &keymap_path)?;
-    let keyboard_controller = KeyboardController::connect(Configuration::default()).await?;
+    let keyboard_controller = KeyboardController::connect().await?;
     keyboard_controller.turn_all_off().await?;
 
     match args.subcommand_name() {
@@ -72,7 +72,7 @@ async fn add_module(
                 }
                 module_leds.push(Some(index_pressed));
                 keyboard_controller
-                    .set_led_by_index(index_pressed, Color::new(255, 255, 255))
+                    .update_led_urgent(index_pressed, Color::new(255, 255, 255))
                     .await?;
             } else {
                 println!("This button is not tied to an LED, it can't be used in module");

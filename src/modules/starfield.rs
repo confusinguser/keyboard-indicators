@@ -63,7 +63,7 @@ impl StarfieldModule {
                 let now = Instant::now();
                 for (led, progress) in leds_animation.iter_mut() {
                     keyboard_controller
-                        .set_led_by_index(
+                        .update_led_urgent(
                             *led,
                             animation_curve(options.background, options.target_color, *progress),
                         )

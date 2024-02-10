@@ -168,7 +168,7 @@ impl WorkspacesModule {
         if let Some(new_color) = new_color {
             if let Some(led_index) = led_index {
                 keyboard_controller
-                    .set_led_by_index(led_index, new_color)
+                    .update_led_urgent(led_index, new_color)
                     .await?;
             }
         }

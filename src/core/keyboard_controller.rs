@@ -1,44 +1,39 @@
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
 use openrgb::data::{Color, Controller};
 use openrgb::{OpenRGB, OpenRGBError};
 use tokio::net::TcpStream;
-
-use super::config_manager::Configuration;
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 
 pub(crate) struct KeyboardController {
     client: OpenRGB<TcpStream>,
     controller_id: u32,
     controller: Controller,
-    pub(crate) config: Configuration,
+    current_colors: Vec<Color>,
 }
 
 impl KeyboardController {
-    pub(crate) async fn set_led_by_index(
-        &self,
+    pub(crate) async fn update_led_urgent(
+        &mut self,
+        sender: &mut Sender<(u32, Color)>,
         index: u32,
         color: Color,
     ) -> Result<(), OpenRGBError> {
-        // let first_in_row = vec![0, 23, 44, 67, 70, 90];
-        // let id = first_in_row[y as usize] + x;
-
+        sender.send((index, color));
         self.client
             .update_led(self.controller_id, index as i32, color)
             .await
     }
 
-    // pub(crate) async fn set_led(&self, x: u32, y: u32, color: Color) -> Result<(), OpenRGBError> {
-    //     let mut index = self.config.first_in_row[y as usize] + x;
-    //     for &skip_index in self.config.skip_indicies.iter() {
-    //         if skip_index <= index {
-    //             index += 1;
-    //         }
-    //     }
+    pub(crate) async fn update_led(sender: &mut Sender<(u32, Color)>, index: u32, color: Color) {
+        sender.send((index, color));
+    }
 
-    //     self.client
-    //         .update_led(self.controller_id, index as i32, color)
-    //         .await
-    // }
-
-    pub(crate) async fn connect(configuration: Configuration) -> anyhow::Result<Self> {
+    pub(crate) async fn connect() -> anyhow::Result<Self> {
         let client = OpenRGB::connect().await;
         if client.is_err() {
             panic!("Connection refused. Check that OpenRGB is running")
@@ -50,21 +45,65 @@ impl KeyboardController {
             client,
             controller_id,
             controller,
-            config: configuration,
+            current_colors: Vec::new(),
         })
     }
 
-    pub(crate) async fn turn_all_off(&self) -> anyhow::Result<()> {
+    pub(crate) async fn turn_all_off(&mut self) -> anyhow::Result<()> {
+        let num_leds = self.num_leds();
+        for i in 0..num_leds as usize {
+            self.current_colors.insert(i, Color::new(0, 0, 0));
+        }
         self.client
             .update_leds(
                 self.controller_id,
-                vec![Color::new(0, 0, 0); self.num_leds().await as usize],
+                vec![Color::new(0, 0, 0); num_leds as usize],
             )
             .await?;
         Ok(())
     }
 
-    pub(crate) async fn num_leds(&self) -> u32 {
+    pub(crate) fn num_leds(&self) -> u32 {
         self.controller.leds.len() as u32
+    }
+
+    pub(crate) fn run(
+        keyboard_controller: Arc<Mutex<KeyboardController>>,
+        task_tracker: &TaskTracker,
+        cancellation_token: CancellationToken,
+        receiver: Receiver<(u32, Color)>,
+    ) {
+        task_tracker.spawn(async move {
+            let mut all_messages: Vec<(u32, Color)> = Vec::with_capacity(100);
+            loop {
+                // Get all messages that are currently in the receiver (max 100)
+                loop {
+                    let message = tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_millis(10)) => None,
+                        val = async {
+                            if all_messages.len() < 100 {
+                                receiver.recv().await
+                            } else {
+                                println!("Over 100 messages were taken in the same cycle");
+                                None
+                            }
+                        } => val
+                    };
+                    if let Some(message) = message {
+                        all_messages.push(message);
+                    } else {
+                        break;
+                    }
+                }
+
+                let lock = keyboard_controller
+                    .lock()
+                    .expect("Mutex is not acquireable");
+                let current_colors = lock.current_colors;
+                lock.client
+                    .update_leds(lock.controller_id, current_colors)
+                    .await;
+            }
+        });
     }
 }

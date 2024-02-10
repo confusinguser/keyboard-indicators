@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use clap::ArgMatches;
+use openrgb::data::Color;
 use tokio::signal;
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
@@ -10,13 +12,14 @@ use crate::core::keyboard_controller::KeyboardController;
 
 pub(crate) async fn start(args: &ArgMatches) -> anyhow::Result<()> {
     let config = config_manager::read_config_and_keymap_from_args(args)?;
-    let keyboard_controller = KeyboardController::connect(config).await?;
+    let (sender, receiver) = mpsc::channel::<(u32, Color)>(100);
+    let mut keyboard_controller = KeyboardController::connect().await?;
 
     let cancellation_token = CancellationToken::new();
     keyboard_controller.turn_all_off().await?;
     let keyboard_controller = Arc::new(keyboard_controller);
     let task_tracker = TaskTracker::new();
-    for module in &keyboard_controller.config.modules {
+    for module in &config.modules {
         module.module_type.run(
             &task_tracker,
             cancellation_token.clone(),

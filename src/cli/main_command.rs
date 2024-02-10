@@ -3,7 +3,6 @@ use std::path::PathBuf;
 use anyhow::bail;
 use clap::{arg, command, value_parser, ArgMatches, Command};
 
-use crate::core::config_manager::Configuration;
 use crate::core::keyboard_controller::KeyboardController;
 use crate::core::{config_creator, config_manager, utils};
 
@@ -59,7 +58,7 @@ pub(crate) async fn main_command(matches: ArgMatches) -> anyhow::Result<()> {
 }
 
 async fn create_config(args: &ArgMatches) -> anyhow::Result<()> {
-    let keyboard_controller = KeyboardController::connect(Configuration::default()).await?;
+    let keyboard_controller = KeyboardController::connect().await?;
     let new_config = config_creator::start_config_creator(
         &keyboard_controller,
         args.get_one::<u32>("ledlimit").copied(),
@@ -72,7 +71,7 @@ async fn create_config(args: &ArgMatches) -> anyhow::Result<()> {
 async fn create_keymap(args: &ArgMatches) -> anyhow::Result<()> {
     // TODO Confirm that the user wants to do this
     let keymap_path = utils::get_keymap_path(args)?;
-    let keyboard_controller = KeyboardController::connect(Configuration::default()).await?;
+    let keyboard_controller = KeyboardController::connect().await?;
     let new_keymap = config_creator::create_keymap(
         &keyboard_controller,
         args.get_one::<u32>("ledlimit").copied(),

@@ -253,7 +253,7 @@ pub async fn highlight_all_modules(
         for led in &module.module_leds {
             let color = colors[i];
             if let Some(led) = led {
-                keyboard_controller.set_led_by_index(*led, color).await?;
+                keyboard_controller.update_led_urgent(*led, color).await?;
             }
         }
     }
@@ -270,7 +270,7 @@ pub async fn highlight_one_module(
     for led in &module.module_leds {
         let color = colors[module_index];
         if let Some(led) = led {
-            keyboard_controller.set_led_by_index(*led, color).await?;
+            keyboard_controller.update_led_urgent(*led, color).await?;
         }
     }
     Ok(())
@@ -286,7 +286,7 @@ pub async fn highlight_one_module_rainbow(
     for (i, led) in module.module_leds.iter().enumerate() {
         let color = colors[i];
         if let Some(led) = led {
-            keyboard_controller.set_led_by_index(*led, color).await?;
+            keyboard_controller.update_led_urgent(*led, color).await?;
         }
     }
     Ok(())

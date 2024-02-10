@@ -75,7 +75,7 @@ impl MediaModule {
                         // flatten() filters out None
                         for led_index in module_leds_clone.into_iter().flatten() {
                             keyboard_controller_clone
-                                .set_led_by_index(led_index, color)
+                                .update_led_urgent(led_index, color)
                                 .await;
                         }
                     }
@@ -130,7 +130,7 @@ impl MediaModule {
                     let led_index = module_leds[order.0 as usize];
                     if let Some(led_index) = led_index {
                         keyboard_controller_clone
-                            .set_led_by_index(
+                            .update_led_urgent(
                                 led_index,
                                 color.map(|comp| (comp as f32 * order.1) as u8),
                             )
