@@ -21,7 +21,7 @@ jobs:
     - name: Run tests
       run: cargo test --verbose
     - name: clippy-check
-    - uses: LoliGothick/clippy-check@v0.3.1
-    - with:
+      uses: LoliGothick/clippy-check@v0.3.1
+      with:
         # GitHub token
         token: ${{ secrets.GITHUB_TOKEN }}
