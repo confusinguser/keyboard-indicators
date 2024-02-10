@@ -8,7 +8,10 @@ use openrgb::data::Color;
 use crate::core::config_manager::{self, Configuration};
 use crate::core::keyboard_controller::KeyboardController;
 use crate::core::module::{Module, ModuleType};
-use crate::core::utils::{self, default_terminal_settings, prepare_terminal_event_capture};
+use crate::core::utils::{
+    self, default_terminal_settings, highlight_all_modules, highlight_one_module,
+    highlight_one_module_rainbow, prepare_terminal_event_capture,
+};
 
 pub async fn module(args: &ArgMatches) -> anyhow::Result<()> {
     let config_path = utils::get_config_path(args)?;
@@ -63,10 +66,9 @@ async fn add_module(
             default_terminal_settings()?;
             if let Some(&index_pressed) = config.keymap.key_led_map.get(&event.code) {
                 if module_leds.contains(&Some(index_pressed)) {
-                    let confirmed = utils::confirm_action("This LED has already been added, are you sure you want to add it again? [y/N]", false)?;
-                    if !confirmed {
-                        continue;
-                    }
+                    println!("This LED has already been added");
+                    prepare_terminal_event_capture()?;
+                    continue;
                 }
                 module_leds.push(Some(index_pressed));
                 keyboard_controller
@@ -115,57 +117,6 @@ fn choose_module_type_to_add() -> anyhow::Result<ModuleType> {
     bail!("No option chosen");
 }
 
-async fn highlight_all_modules(
-    keyboard_controller: &KeyboardController,
-    config: &mut Configuration,
-) -> anyhow::Result<()> {
-    keyboard_controller.turn_all_off().await?;
-    let colors = utils::color_list(config.modules.len(), 255., 255.);
-    for (i, module) in config.modules.iter().enumerate() {
-        for led in &module.module_leds {
-            let color = colors[i];
-            if let Some(led) = led {
-                keyboard_controller.set_led_by_index(*led, color).await?;
-            }
-        }
-    }
-    Ok(())
-}
-
-async fn highlight_one_module(
-    keyboard_controller: &KeyboardController,
-    num_modules: usize,
-    module_index: usize,
-    module: &Module,
-) -> anyhow::Result<()> {
-    keyboard_controller.turn_all_off().await?;
-    let colors = utils::color_list(num_modules, 255., 255.);
-    for led in &module.module_leds {
-        let color = colors[module_index];
-        if let Some(led) = led {
-            keyboard_controller.set_led_by_index(*led, color).await?;
-        }
-    }
-    Ok(())
-}
-
-/// Highlights a module with a rainbow palette to make the order of the LEDs clear
-async fn highlight_one_module_rainbow(
-    keyboard_controller: &KeyboardController,
-    module: &Module,
-) -> anyhow::Result<()> {
-    keyboard_controller.turn_all_off().await?;
-    let num_leds = module.module_leds.len();
-    let colors = utils::color_list(num_leds, 255., 255.);
-    for (i, led) in module.module_leds.iter().enumerate() {
-        let color = colors[i];
-        if let Some(led) = led {
-            keyboard_controller.set_led_by_index(*led, color).await?;
-        }
-    }
-    Ok(())
-}
-
 pub async fn remove(
     keyboard_controller: &KeyboardController,
     config: &mut Configuration,
@@ -176,7 +127,7 @@ pub async fn remove(
     }
 
     println!("Choose a module to remove by clicking on a button in it");
-    highlight_all_modules(keyboard_controller, config).await?;
+    highlight_all_modules(keyboard_controller, config, 100., 100.).await?;
 
     utils::prepare_terminal_event_capture()?;
     loop {
@@ -219,7 +170,7 @@ pub async fn remove(
 
                     print_module_info(module_selected.1);
                     let module_removal_confirmed = utils::confirm_action(
-                        "Are you sure you want to remove this module? [y/N]",
+                        "Are you sure you want to remove this module? [y/N] ",
                         false,
                     )?;
 
@@ -257,7 +208,7 @@ async fn info(
     config: &mut Configuration,
 ) -> anyhow::Result<()> {
     println!("Choose a module to get info on by clicking a button in it");
-    highlight_all_modules(keyboard_controller, config).await?;
+    highlight_all_modules(keyboard_controller, config, 100., 100.).await?;
 
     utils::prepare_terminal_event_capture()?;
     loop {
@@ -289,9 +240,11 @@ async fn info(
                     }
                 }
                 if let Some(module_selected) = module_selected {
-                    // TODO Make user select between each that have this button, also for remove
+                    // TODO Make user select between each module that has this button, also for remove
                     // subcommand
                     print_module_info(module_selected);
+                    keyboard_controller.turn_all_off().await?;
+                    highlight_all_modules(keyboard_controller, config, 80., 10.).await?;
                     highlight_one_module_rainbow(keyboard_controller, module_selected).await?;
                     utils::pause_until_click()?;
 

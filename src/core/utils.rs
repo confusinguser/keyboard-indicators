@@ -8,9 +8,12 @@ use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
     PushKeyboardEnhancementFlags,
 };
-use hsl::HSL;
 use rgb::{ComponentMap, RGB, RGB8, RGBA8};
 use tokio::process::{self, ChildStdout};
+
+use super::config_manager::Configuration;
+use super::keyboard_controller::KeyboardController;
+use super::module::Module;
 
 pub(crate) fn run_command_async(command: &str) -> Option<ChildStdout> {
     let mut command_array = command.split(' ');
@@ -188,24 +191,19 @@ pub(crate) fn get_config_path(args: &ArgMatches) -> anyhow::Result<PathBuf> {
 }
 
 /// Creates a color list with `len` items and evenly divided around the color circle
+/// Saturation and lightness are supposed to be in the range 0..255
 pub(crate) fn color_list(len: usize, saturation: f32, lightness: f32) -> Vec<openrgb::data::Color> {
     // let mut curr_hue = rand::thread_rng().gen_range(0.0..360.);
-    // For some reason, the library gives the complementary color to the one it should be.
-    // Therefore start at 180. so that first color is red
-    let mut curr_hue = 180.;
+    let mut hue = 0.;
     let hue_step = 360. / len as f64;
     let mut out = Vec::new();
     for _ in 0..len {
-        let color = HSL {
-            h: curr_hue,
-            s: saturation as f64,
-            l: lightness as f64,
-        };
-        let color_rgb = RGB::from(color.to_rgb());
+        let color = hsv::hsv_to_rgb(hue, saturation as f64 / 100., lightness as f64 / 100.);
+        let color_rgb = RGB::from(color);
         out.push(color_rgb);
-        curr_hue += hue_step;
-        if curr_hue >= 360. {
-            curr_hue -= 360.
+        hue += hue_step;
+        if hue >= 360. {
+            hue -= 360.
         }
     }
     out
@@ -216,7 +214,7 @@ pub(crate) fn pause_until_click() -> anyhow::Result<()> {
     let mut stdout = io::stdout();
 
     // We want the cursor to stay at the end of the line, so we print without a newline and flush manually.
-    print!("Press any key to continue...");
+    print!("Press any key to continue... ");
     stdout.flush()?;
 
     // Read a single byte and discard
@@ -243,6 +241,57 @@ pub(crate) fn confirm_action(message: &str, default_value: bool) -> anyhow::Resu
     Ok(default_value)
 }
 
+pub async fn highlight_all_modules(
+    keyboard_controller: &KeyboardController,
+    config: &Configuration,
+    saturation: f32,
+    lightness: f32,
+) -> anyhow::Result<()> {
+    keyboard_controller.turn_all_off().await?;
+    let colors = color_list(config.modules.len(), saturation, lightness);
+    for (i, module) in config.modules.iter().enumerate() {
+        for led in &module.module_leds {
+            let color = colors[i];
+            if let Some(led) = led {
+                keyboard_controller.set_led_by_index(*led, color).await?;
+            }
+        }
+    }
+    Ok(())
+}
+
+pub async fn highlight_one_module(
+    keyboard_controller: &KeyboardController,
+    num_modules: usize,
+    module_index: usize,
+    module: &Module,
+) -> anyhow::Result<()> {
+    let colors = color_list(num_modules, 100., 100.);
+    for led in &module.module_leds {
+        let color = colors[module_index];
+        if let Some(led) = led {
+            keyboard_controller.set_led_by_index(*led, color).await?;
+        }
+    }
+    Ok(())
+}
+
+/// Highlights a module with a rainbow palette to make the order of the LEDs clear
+pub async fn highlight_one_module_rainbow(
+    keyboard_controller: &KeyboardController,
+    module: &Module,
+) -> anyhow::Result<()> {
+    let num_leds = module.module_leds.len();
+    let colors = color_list(num_leds, 100., 100.);
+    for (i, led) in module.module_leds.iter().enumerate() {
+        let color = colors[i];
+        if let Some(led) = led {
+            keyboard_controller.set_led_by_index(*led, color).await?;
+        }
+    }
+    Ok(())
+}
+
 mod tests {
     #![allow(unused_imports)]
     use crate::core::utils::color_list;
@@ -251,7 +300,7 @@ mod tests {
     #[test]
     fn test_color_list() {
         for len in 1..=10 {
-            let list = color_list(len, 255., 255.);
+            let list = color_list(len, 100., 100.);
             assert_eq!(list.len(), len);
             assert_eq!(*list.first().unwrap(), RGB::from((255, 0, 0)));
         }
