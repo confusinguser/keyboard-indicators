@@ -190,7 +190,9 @@ pub(crate) fn get_config_path(args: &ArgMatches) -> anyhow::Result<PathBuf> {
 /// Creates a color list with `len` items and evenly divided around the color circle
 pub(crate) fn color_list(len: usize, saturation: f32, lightness: f32) -> Vec<openrgb::data::Color> {
     // let mut curr_hue = rand::thread_rng().gen_range(0.0..360.);
-    let mut curr_hue = 0.;
+    // For some reason, the library gives the complementary color to the one it should be.
+    // Therefore start at 180. so that first color is red
+    let mut curr_hue = 180.;
     let hue_step = 360. / len as f64;
     let mut out = Vec::new();
     for _ in 0..len {
@@ -220,4 +222,19 @@ pub(crate) fn pause_until_click() -> anyhow::Result<()> {
     // Read a single byte and discard
     let _ = stdin.read(&mut [0u8]).unwrap();
     Ok(())
+}
+
+mod tests {
+    #![allow(unused_imports)]
+    use crate::core::utils::color_list;
+    use rgb::RGB;
+
+    #[test]
+    fn test_color_list() {
+        for len in 1..=10 {
+            let list = color_list(len, 255., 255.);
+            assert_eq!(list.len(), len);
+            assert_eq!(*list.first().unwrap(), RGB::from((255, 0, 0)));
+        }
+    }
 }
