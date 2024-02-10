@@ -1,4 +1,4 @@
-use std::io::{self, Read, Write};
+use std::io::{self, BufRead, Read, Write};
 use std::path::PathBuf;
 use std::process::Stdio;
 
@@ -222,6 +222,25 @@ pub(crate) fn pause_until_click() -> anyhow::Result<()> {
     // Read a single byte and discard
     let _ = stdin.read(&mut [0u8]).unwrap();
     Ok(())
+}
+
+pub(crate) fn confirm_action(message: &str, default_value: bool) -> anyhow::Result<bool> {
+    print!("{}", message);
+    io::stdout().flush()?;
+    let stdin = io::stdin();
+    let line = stdin
+        .lock()
+        .lines()
+        .next()
+        .unwrap_or(Ok(String::default()))?;
+    if line.to_lowercase() == "y" {
+        return Ok(true);
+    }
+    if line.to_lowercase() == "n" {
+        return Ok(false);
+    }
+
+    Ok(default_value)
 }
 
 mod tests {

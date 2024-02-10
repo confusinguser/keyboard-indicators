@@ -1,4 +1,4 @@
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead};
 
 use anyhow::bail;
 use clap::ArgMatches;
@@ -35,7 +35,7 @@ pub async fn add(
     config: &mut Configuration,
 ) -> anyhow::Result<()> {
     println!("Choose a module to add:");
-    let module_type = choose_module_to_add()?;
+    let module_type = choose_module_type_to_add()?;
     println!("Click the buttons which are in this module IN ORDER from left to right. Press LMB when done. Press RMB to add a button to the module which is not tied to any LED");
     add_module(keyboard_controller, config, module_type).await?;
 
@@ -62,6 +62,12 @@ async fn add_module(
             }
             default_terminal_settings()?;
             if let Some(&index_pressed) = config.keymap.key_led_map.get(&event.code) {
+                if module_leds.contains(&Some(index_pressed)) {
+                    let confirmed = utils::confirm_action("This LED has already been added, are you sure you want to add it again? [y/N]", false)?;
+                    if !confirmed {
+                        continue;
+                    }
+                }
                 module_leds.push(Some(index_pressed));
                 keyboard_controller
                     .set_led_by_index(index_pressed, Color::new(255, 255, 255))
@@ -74,7 +80,7 @@ async fn add_module(
         if let Event::Mouse(event) = event {
             if event.kind == MouseEventKind::Down(MouseButton::Left) {
                 default_terminal_settings()?;
-                println!("Creating module {}", module_type.name());
+                println!("Creating {}", module_type.name());
                 let module = Module::new(module_type, module_leds);
                 config.modules.push(module);
                 break;
@@ -89,7 +95,7 @@ async fn add_module(
     Ok(())
 }
 
-fn choose_module_to_add() -> anyhow::Result<ModuleType> {
+fn choose_module_type_to_add() -> anyhow::Result<ModuleType> {
     let all_module_types = ModuleType::all_module_types();
     for (i, module) in all_module_types.iter().enumerate() {
         println!("{}) {} -- {}", i + 1, module.name(), module.desc())
@@ -164,6 +170,11 @@ pub async fn remove(
     keyboard_controller: &KeyboardController,
     config: &mut Configuration,
 ) -> anyhow::Result<()> {
+    if config.modules.is_empty() {
+        println!("There are no modules to remove");
+        return Ok(());
+    }
+
     println!("Choose a module to remove by clicking on a button in it");
     highlight_all_modules(keyboard_controller, config).await?;
 
@@ -181,32 +192,39 @@ pub async fn remove(
             }
             default_terminal_settings()?;
             if let Some(&index_pressed) = config.keymap.key_led_map.get(&event.code) {
-                let mut module_to_remove = None;
+                let mut module_selected = None;
                 for (i, module) in config.modules.iter().enumerate() {
                     for led in &module.module_leds {
                         let Some(led) = led else {
                             continue;
                         };
                         if index_pressed == *led {
-                            module_to_remove = Some((i, module));
+                            module_selected = Some((i, module));
                             break;
                         }
                     }
-                    if module_to_remove.is_some() {
+                    if module_selected.is_some() {
                         break;
                     }
                 }
-                if let Some(module_to_remove) = module_to_remove {
-                    let module_removal_confirmed = confirm_module_removal(
+                if let Some(module_selected) = module_selected {
+                    keyboard_controller.turn_all_off().await?;
+                    highlight_one_module(
                         keyboard_controller,
                         config.modules.len(),
-                        module_to_remove.0,
-                        module_to_remove.1,
+                        module_selected.0,
+                        module_selected.1,
                     )
                     .await?;
 
+                    print_module_info(module_selected.1);
+                    let module_removal_confirmed = utils::confirm_action(
+                        "Are you sure you want to remove this module? [y/N]",
+                        false,
+                    )?;
+
                     if module_removal_confirmed {
-                        config.modules.remove(module_to_remove.0);
+                        config.modules.remove(module_selected.0);
                     }
                     keyboard_controller.turn_all_off().await?;
                     break;
@@ -221,31 +239,6 @@ pub async fn remove(
     }
     default_terminal_settings()?;
     Ok(())
-}
-
-async fn confirm_module_removal(
-    keyboard_controller: &KeyboardController,
-    num_modules: usize,
-    module_index: usize,
-    module: &Module,
-) -> anyhow::Result<bool> {
-    keyboard_controller.turn_all_off().await?;
-    highlight_one_module(keyboard_controller, num_modules, module_index, module).await?;
-
-    print_module_info(module);
-    print!("Are you sure you want to remove this module? [y/N] ");
-    io::stdout().flush()?;
-    let stdin = io::stdin();
-    let line = stdin
-        .lock()
-        .lines()
-        .next()
-        .unwrap_or(Ok(String::default()))?;
-    if line.to_lowercase() == "y" {
-        return Ok(true);
-    }
-
-    Ok(false)
 }
 
 fn print_module_info(module: &Module) {

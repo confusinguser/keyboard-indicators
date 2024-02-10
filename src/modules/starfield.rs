@@ -19,6 +19,18 @@ pub(crate) struct StarfieldModuleOptions {
     pub(crate) animation_time: Duration,
 }
 
+impl Default for StarfieldModuleOptions {
+    fn default() -> Self {
+        Self {
+            background: Default::default(),
+            min_currently_in_animation: Default::default(),
+            target_color: Default::default(),
+            probability: Default::default(),
+            animation_time: Default::default(),
+        }
+    }
+}
+
 pub(crate) struct StarfieldModule {}
 
 impl StarfieldModule {

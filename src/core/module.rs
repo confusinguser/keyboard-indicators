@@ -77,7 +77,11 @@ impl ModuleType {
         }
     }
 
-    pub(crate) fn all_module_types() -> [ModuleType; 2] {
-        [ModuleType::WorkspacesModule, ModuleType::MediaModule]
+    pub(crate) fn all_module_types() -> [ModuleType; 3] {
+        [
+            ModuleType::WorkspacesModule,
+            ModuleType::MediaModule,
+            ModuleType::StarfieldModule(StarfieldModuleOptions::default()),
+        ]
     }
 }
