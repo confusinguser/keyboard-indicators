@@ -2,10 +2,11 @@ use rgb::{ComponentMap, RGB8};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::sync::mpsc::Sender;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use crate::core::keyboard_controller::KeyboardController;
+use crate::core::keyboard_controller::{KeyboardController, KeyboardControllerMessage};
 use crate::core::{constants, utils};
 
 pub(crate) struct MediaModule {}
@@ -14,7 +15,7 @@ impl MediaModule {
     pub(crate) fn run(
         task_tracker: &TaskTracker,
         cancellation_token: CancellationToken,
-        keyboard_controller: Arc<KeyboardController>,
+        mut sender: Sender<KeyboardControllerMessage>,
         module_leds: Vec<Option<u32>>,
     ) {
         let track_duration: Arc<Mutex<Option<Duration>>> = Arc::new(Mutex::new(None));
@@ -69,14 +70,13 @@ impl MediaModule {
                     if !paused_since_last_time {
                         paused_since_last_time = true;
                         last_progress = None;
-                        let keyboard_controller_clone = keyboard_controller.clone();
 
                         let module_leds_clone = module_leds.clone();
                         // flatten() filters out None
                         for led_index in module_leds_clone.into_iter().flatten() {
-                            keyboard_controller_clone
-                                .set_led_by_index(led_index, color)
-                                .await;
+                            KeyboardController::update_led_urgent(&mut sender, led_index, color)
+                                .await
+                                .unwrap();
                         }
                     }
                     tokio::select! {
@@ -126,15 +126,15 @@ impl MediaModule {
                     module_leds.len() as u32,
                     false,
                 ) {
-                    let keyboard_controller_clone = keyboard_controller.clone();
                     let led_index = module_leds[order.0 as usize];
                     if let Some(led_index) = led_index {
-                        keyboard_controller_clone
-                            .set_led_by_index(
-                                led_index,
-                                color.map(|comp| (comp as f32 * order.1) as u8),
-                            )
-                            .await;
+                        KeyboardController::update_led(
+                            &mut sender,
+                            led_index,
+                            color.map(|comp| (comp as f32 * order.1) as u8),
+                        )
+                        .await
+                        .unwrap();
                     }
                 }
                 last_progress = Some(progress);

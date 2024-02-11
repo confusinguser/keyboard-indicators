@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use tokio::sync::mpsc::Sender;
 
 use anyhow::{bail, Context};
 use openrgb::data::Color;
@@ -7,7 +7,7 @@ use swayipc_async::{Connection, EventType, WorkspaceChange, WorkspaceEvent};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use crate::core::keyboard_controller::KeyboardController;
+use crate::core::keyboard_controller::{KeyboardController, KeyboardControllerMessage};
 use crate::core::{constants, utils};
 use futures_util::stream::StreamExt;
 
@@ -17,7 +17,7 @@ impl WorkspacesModule {
     pub fn run(
         task_tracker: &TaskTracker,
         cancellation_token: CancellationToken,
-        keyboard_controller: Arc<KeyboardController>,
+        mut sender: Sender<KeyboardControllerMessage>,
         leds_order: Vec<Option<u32>>,
     ) {
         task_tracker.spawn(async move {
@@ -45,12 +45,8 @@ impl WorkspacesModule {
                 };
                 match message {
                     swayipc_async::Event::Workspace(workspace_event) => {
-                        let event_handler_output = Self::on_window_event(
-                            &keyboard_controller,
-                            &leds_order,
-                            workspace_event,
-                        )
-                        .await;
+                        let event_handler_output =
+                            Self::on_window_event(&mut sender, &leds_order, workspace_event).await;
                         if let Err(err) = event_handler_output {
                             eprintln!("{}", err)
                         };
@@ -74,14 +70,14 @@ impl WorkspacesModule {
 impl WorkspacesModule {
     /// The event that is triggered whenever something happens with windows
     async fn on_window_event(
-        keyboard_controller: &Arc<KeyboardController>,
+        sender: &mut Sender<KeyboardControllerMessage>,
         leds_order: &[Option<u32>],
         event: Box<WorkspaceEvent>,
     ) -> anyhow::Result<()> {
-        Self::handle_workspace_change(keyboard_controller, leds_order, &event, false)
+        Self::handle_workspace_change(sender, leds_order, &event, false)
             .await
             .context("In current")?;
-        Self::handle_workspace_change(keyboard_controller, leds_order, &event, true)
+        Self::handle_workspace_change(sender, leds_order, &event, true)
             .await
             .context("In old")?;
 
@@ -89,7 +85,7 @@ impl WorkspacesModule {
     }
 
     async fn handle_workspace_change(
-        keyboard_controller: &Arc<KeyboardController>,
+        sender: &mut Sender<KeyboardControllerMessage>,
         leds_order: &[Option<u32>],
         event: &WorkspaceEvent,
         old: bool,
@@ -167,9 +163,7 @@ impl WorkspacesModule {
         };
         if let Some(new_color) = new_color {
             if let Some(led_index) = led_index {
-                keyboard_controller
-                    .set_led_by_index(led_index, new_color)
-                    .await?;
+                KeyboardController::update_led(sender, led_index, new_color).await?;
             }
         }
         Ok(())

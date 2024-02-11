@@ -1,36 +1,41 @@
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
 use crossterm::event::*;
 use openrgb::data::Color;
+use tokio::sync::mpsc::Sender;
 
 use crate::cli::module_subcommand;
 use crate::core::config_manager::Configuration;
 use crate::core::keymap::Keymap;
 use crate::core::utils::default_terminal_settings;
 
-use super::keyboard_controller::KeyboardController;
+use super::keyboard_controller::{KeyboardController, KeyboardControllerMessage};
 use super::utils::prepare_terminal_event_capture;
 
 pub(crate) async fn start_config_creator(
-    keyboard_controller: &KeyboardController,
+    keyboard_controller: Arc<Mutex<KeyboardController>>,
+    sender: &mut Sender<KeyboardControllerMessage>,
     led_limit: Option<u32>,
 ) -> anyhow::Result<Configuration> {
     let mut config = Configuration::default();
     println!("Press every key as it lights up. If no key lights up, press LMB. If no reaction is given when key is pressed, press RMB");
-    build_key_led_map(keyboard_controller, &mut config.keymap, led_limit).await?;
+    build_key_led_map(keyboard_controller, sender, &mut config.keymap, led_limit).await?;
     println!(
         "Press the first key of every row. In order. When all of them have been pressed, press LMB"
     );
-    build_first_in_row(keyboard_controller, &mut config.keymap).await?;
+    build_first_in_row(sender, &mut config.keymap).await?;
     println!("Now, we're going to place the modules");
-    module_subcommand::add(keyboard_controller, &mut config).await?;
+    module_subcommand::add(sender, &mut config).await?;
     Ok(config)
 }
 
 async fn build_first_in_row(
-    keyboard_controller: &KeyboardController,
+    sender: &mut Sender<KeyboardControllerMessage>,
     keymap: &mut Keymap,
 ) -> anyhow::Result<()> {
     prepare_terminal_event_capture()?;
-    keyboard_controller.turn_all_off().await?;
+    KeyboardController::turn_all_off(sender).await?;
     loop {
         let event = crossterm::event::read().unwrap();
         if let Event::Key(event) = event {
@@ -44,8 +49,7 @@ async fn build_first_in_row(
             }
             if let Some(&index_pressed) = keymap.key_led_map.get(&event.code) {
                 keymap.first_in_row.push(index_pressed);
-                keyboard_controller
-                    .set_led_by_index(index_pressed, Color::new(255, 255, 255))
+                KeyboardController::update_led(sender, index_pressed, Color::new(255, 255, 255))
                     .await?;
             } else {
                 default_terminal_settings()?;
@@ -57,7 +61,7 @@ async fn build_first_in_row(
             if event.kind == MouseEventKind::Down(MouseButton::Left) {
                 default_terminal_settings()?;
                 println!("Great. There are {} rows", keymap.first_in_row.len());
-                keyboard_controller.turn_all_off().await?;
+                KeyboardController::turn_all_off(sender).await?;
                 break;
             }
         }
@@ -67,25 +71,23 @@ async fn build_first_in_row(
 }
 
 async fn build_key_led_map(
-    keyboard_controller: &KeyboardController,
+    keyboard_controller: Arc<Mutex<KeyboardController>>,
+    sender: &mut Sender<KeyboardControllerMessage>,
     keymap: &mut Keymap,
     led_limit: Option<u32>,
 ) -> anyhow::Result<()> {
     prepare_terminal_event_capture()?;
-    keyboard_controller.turn_all_off().await?;
+    KeyboardController::turn_all_off(sender).await?;
     for index in 0..keyboard_controller
-        .num_leds()
+        .lock()
         .await
+        .num_leds()
         .min(led_limit.unwrap_or(u32::MAX))
     {
         if index != 0 {
-            keyboard_controller
-                .set_led_by_index(index - 1, Color::new(0, 0, 0))
-                .await?;
+            KeyboardController::update_led(sender, index - 1, Color::new(0, 0, 0)).await?;
         }
-        keyboard_controller
-            .set_led_by_index(index, Color::new(255, 255, 255))
-            .await?;
+        KeyboardController::update_led(sender, index, Color::new(255, 255, 255)).await?;
         loop {
             let event = crossterm::event::read().unwrap();
             match event {
@@ -121,15 +123,16 @@ async fn build_key_led_map(
 }
 
 pub(crate) async fn create_keymap(
-    keyboard_controller: &KeyboardController,
+    keyboard_controller: Arc<Mutex<KeyboardController>>,
+    sender: &mut Sender<KeyboardControllerMessage>,
     led_limit: Option<u32>,
 ) -> anyhow::Result<Keymap> {
     let mut keymap = Keymap::default();
     println!("Press every key as it lights up. If no key lights up, press LMB. If no reaction is given when key is pressed, press RMB");
-    build_key_led_map(keyboard_controller, &mut keymap, led_limit).await?;
+    build_key_led_map(keyboard_controller, sender, &mut keymap, led_limit).await?;
     println!(
         "Press the first key of every row. In order. When all of them have been pressed, press LMB"
     );
-    build_first_in_row(keyboard_controller, &mut keymap).await?;
+    build_first_in_row(sender, &mut keymap).await?;
     Ok(keymap)
 }

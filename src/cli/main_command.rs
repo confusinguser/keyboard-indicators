@@ -1,9 +1,12 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use anyhow::bail;
 use clap::{arg, command, value_parser, ArgMatches, Command};
+use tokio::sync::{mpsc, Mutex};
+use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
 
-use crate::core::config_manager::Configuration;
 use crate::core::keyboard_controller::KeyboardController;
 use crate::core::{config_creator, config_manager, utils};
 
@@ -59,9 +62,19 @@ pub(crate) async fn main_command(matches: ArgMatches) -> anyhow::Result<()> {
 }
 
 async fn create_config(args: &ArgMatches) -> anyhow::Result<()> {
-    let keyboard_controller = KeyboardController::connect(Configuration::default()).await?;
+    let keyboard_controller = KeyboardController::connect().await?;
+    let (mut sender, receiver) = mpsc::channel(100);
+    let cancellation_token = CancellationToken::new();
+    let keyboard_controller = Arc::new(Mutex::new(keyboard_controller));
+    KeyboardController::run(
+        keyboard_controller.clone(),
+        &TaskTracker::new(),
+        cancellation_token,
+        receiver,
+    );
     let new_config = config_creator::start_config_creator(
-        &keyboard_controller,
+        keyboard_controller,
+        &mut sender,
         args.get_one::<u32>("ledlimit").copied(),
     )
     .await?;
@@ -72,9 +85,19 @@ async fn create_config(args: &ArgMatches) -> anyhow::Result<()> {
 async fn create_keymap(args: &ArgMatches) -> anyhow::Result<()> {
     // TODO Confirm that the user wants to do this
     let keymap_path = utils::get_keymap_path(args)?;
-    let keyboard_controller = KeyboardController::connect(Configuration::default()).await?;
+    let keyboard_controller = KeyboardController::connect().await?;
+    let (mut sender, receiver) = mpsc::channel(100);
+    let cancellation_token = CancellationToken::new();
+    let keyboard_controller = Arc::new(Mutex::new(keyboard_controller));
+    KeyboardController::run(
+        keyboard_controller.clone(),
+        &TaskTracker::new(),
+        cancellation_token,
+        receiver,
+    );
     let new_keymap = config_creator::create_keymap(
-        &keyboard_controller,
+        keyboard_controller,
+        &mut sender,
         args.get_one::<u32>("ledlimit").copied(),
     )
     .await?;

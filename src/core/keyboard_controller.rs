@@ -1,44 +1,87 @@
-use openrgb::data::{Color, Controller};
-use openrgb::{OpenRGB, OpenRGBError};
-use tokio::net::TcpStream;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::Mutex;
 
-use super::config_manager::Configuration;
+use openrgb::data::{Color, Controller};
+use openrgb::OpenRGB;
+use rgb::RGB;
+use tokio::net::TcpStream;
+use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::time::Instant;
+use tokio_util::sync::CancellationToken;
+use tokio_util::task::TaskTracker;
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct KeyboardControllerMessage {
+    led: Option<u32>,
+    color: Color,
+    urgent: bool,
+}
+
+impl KeyboardControllerMessage {
+    fn new(led: u32, color: Color, urgent: bool) -> Self {
+        Self {
+            led: Some(led),
+            color,
+            urgent,
+        }
+    }
+    fn new_global(color: Color, urgent: bool) -> Self {
+        Self {
+            led: None,
+            color,
+            urgent,
+        }
+    }
+}
 
 pub(crate) struct KeyboardController {
     client: OpenRGB<TcpStream>,
     controller_id: u32,
     controller: Controller,
-    pub(crate) config: Configuration,
+    current_colors: Vec<Color>,
 }
 
 impl KeyboardController {
-    pub(crate) async fn set_led_by_index(
-        &self,
+    pub(crate) async fn update_led_urgent(
+        sender: &mut Sender<KeyboardControllerMessage>,
         index: u32,
         color: Color,
-    ) -> Result<(), OpenRGBError> {
-        // let first_in_row = vec![0, 23, 44, 67, 70, 90];
-        // let id = first_in_row[y as usize] + x;
-
-        self.client
-            .update_led(self.controller_id, index as i32, color)
-            .await
+    ) -> anyhow::Result<()> {
+        sender
+            .send(KeyboardControllerMessage::new(index, color, true))
+            .await?;
+        Ok(())
     }
 
-    // pub(crate) async fn set_led(&self, x: u32, y: u32, color: Color) -> Result<(), OpenRGBError> {
-    //     let mut index = self.config.first_in_row[y as usize] + x;
-    //     for &skip_index in self.config.skip_indicies.iter() {
-    //         if skip_index <= index {
-    //             index += 1;
-    //         }
-    //     }
+    pub(crate) async fn update_led(
+        sender: &mut Sender<KeyboardControllerMessage>,
+        index: u32,
+        color: Color,
+    ) -> anyhow::Result<()> {
+        sender
+            .send(KeyboardControllerMessage::new(index, color, false))
+            .await?;
+        Ok(())
+    }
 
-    //     self.client
-    //         .update_led(self.controller_id, index as i32, color)
-    //         .await
-    // }
-
-    pub(crate) async fn connect(configuration: Configuration) -> anyhow::Result<Self> {
+    pub(crate) async fn update_all_leds(
+        sender: &mut Sender<KeyboardControllerMessage>,
+        color: Color,
+        urgent: bool,
+    ) -> anyhow::Result<()> {
+        sender
+            .send(KeyboardControllerMessage::new_global(color, urgent))
+            .await?;
+        Ok(())
+    }
+    pub(crate) async fn turn_all_off(
+        sender: &mut Sender<KeyboardControllerMessage>,
+    ) -> anyhow::Result<()> {
+        Self::update_all_leds(sender, Color::new(0, 0, 0), false).await?;
+        Ok(())
+    }
+    pub(crate) async fn connect() -> anyhow::Result<Self> {
         let client = OpenRGB::connect().await;
         if client.is_err() {
             panic!("Connection refused. Check that OpenRGB is running")
@@ -46,25 +89,96 @@ impl KeyboardController {
         let client = client.unwrap();
         let controller_id = 1;
         let controller = client.get_controller(controller_id).await?;
+
+        let current_colors = vec![Color::new(0, 0, 0); controller.leds.len()];
         Ok(KeyboardController {
             client,
             controller_id,
             controller,
-            config: configuration,
+            current_colors,
         })
     }
 
-    pub(crate) async fn turn_all_off(&self) -> anyhow::Result<()> {
-        self.client
-            .update_leds(
-                self.controller_id,
-                vec![Color::new(0, 0, 0); self.num_leds().await as usize],
-            )
-            .await?;
-        Ok(())
+    pub(crate) fn num_leds(&self) -> u32 {
+        self.controller.leds.len() as u32
     }
 
-    pub(crate) async fn num_leds(&self) -> u32 {
-        self.controller.leds.len() as u32
+    pub(crate) fn run(
+        keyboard_controller: Arc<Mutex<KeyboardController>>,
+        task_tracker: &TaskTracker,
+        cancellation_token: CancellationToken,
+        mut receiver: Receiver<KeyboardControllerMessage>,
+    ) {
+        task_tracker.spawn(async move {
+            let mut lock = keyboard_controller.lock().await;
+            let mut all_messages: Vec<KeyboardControllerMessage> = Vec::with_capacity(100);
+            for _ in lock.current_colors.len()..lock.num_leds() as usize {
+                lock.current_colors.push(RGB::from((0, 0, 0)));
+            }
+            drop(lock);
+            let mut time_of_last_update = Instant::now();
+
+            loop {
+                if cancellation_token.is_cancelled() {
+                    break;
+                }
+                // Get all messages that are currently in the receiver (max 100)
+                let mut time_of_urgent_flag = None;
+                loop {
+                    let all_messages_len = all_messages.len();
+                    if all_messages_len >= 100 {
+                        println!("Over 100 messages were received in the same cycle");
+                        break;
+                    }
+                    let sleep_until = if let Some(urgent_flag) = time_of_urgent_flag {
+                        urgent_flag + Duration::from_millis(1)
+                    } else {
+                        time_of_last_update + Duration::from_millis(100)
+                    };
+                    let message = tokio::select! {
+                        _ = tokio::time::sleep_until(sleep_until) => None,
+                        val = receiver.recv() => val
+                    };
+                    if let Some(message) = message {
+                        if message.led.is_none() {
+                            // The current message changes all leds
+                            all_messages.clear();
+                        }
+                        all_messages.push(message);
+                        if message.urgent && time_of_urgent_flag.is_none() {
+                            time_of_urgent_flag = Some(Instant::now());
+                        }
+                    } else {
+                        break;
+                    }
+                }
+                if all_messages.is_empty() {
+                    continue;
+                }
+
+                // Updating LED colors
+                let mut lock = keyboard_controller.lock().await;
+                for message in &all_messages {
+                    if let Some(led) = message.led {
+                        if led as usize >= lock.current_colors.len() {
+                            continue;
+                        }
+                        lock.current_colors[led as usize] = message.color;
+                    } else {
+                        for i in 0..lock.current_colors.len() as usize {
+                            lock.current_colors[i] = Color::new(0, 0, 0);
+                        }
+                    }
+                }
+                lock.client
+                    .update_leds(lock.controller_id, lock.current_colors.clone())
+                    .await
+                    .unwrap();
+                drop(lock);
+
+                time_of_last_update = Instant::now();
+                all_messages.clear();
+            }
+        });
     }
 }

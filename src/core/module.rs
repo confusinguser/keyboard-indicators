@@ -1,6 +1,5 @@
-use std::sync::Arc;
-
 use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc::Sender;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
@@ -8,7 +7,7 @@ use crate::modules::media_playing::MediaModule;
 use crate::modules::starfield::{StarfieldModule, StarfieldModuleOptions};
 use crate::modules::workspaces::WorkspacesModule;
 
-use super::keyboard_controller::KeyboardController;
+use super::keyboard_controller::KeyboardControllerMessage;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct Module {
@@ -36,29 +35,19 @@ impl ModuleType {
         &self,
         task_tracker: &TaskTracker,
         cancellation_token: CancellationToken,
-        keyboard_controller: Arc<KeyboardController>,
+        sender: Sender<KeyboardControllerMessage>,
         module_leds: Vec<Option<u32>>,
     ) {
         match self {
-            ModuleType::Workspaces => WorkspacesModule::run(
-                task_tracker,
-                cancellation_token,
-                keyboard_controller,
-                module_leds,
-            ),
-            ModuleType::Media => MediaModule::run(
-                task_tracker,
-                cancellation_token,
-                keyboard_controller,
-                module_leds,
-            ),
-            ModuleType::Starfield(opts) => StarfieldModule::run(
-                task_tracker,
-                cancellation_token,
-                keyboard_controller,
-                module_leds,
-                *opts,
-            ),
+            ModuleType::Workspaces => {
+                WorkspacesModule::run(task_tracker, cancellation_token, sender, module_leds)
+            }
+            ModuleType::Media => {
+                MediaModule::run(task_tracker, cancellation_token, sender, module_leds)
+            }
+            ModuleType::Starfield(opts) => {
+                StarfieldModule::run(task_tracker, cancellation_token, sender, module_leds, *opts)
+            }
         }
     }
 

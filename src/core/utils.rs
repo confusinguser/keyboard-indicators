@@ -10,9 +10,10 @@ use crossterm::event::{
 };
 use rgb::{ComponentMap, RGB, RGB8, RGBA8};
 use tokio::process::{self, ChildStdout};
+use tokio::sync::mpsc::Sender;
 
 use super::config_manager::Configuration;
-use super::keyboard_controller::KeyboardController;
+use super::keyboard_controller::{KeyboardController, KeyboardControllerMessage};
 use super::module::Module;
 
 pub(crate) fn run_command_async(command: &str) -> Option<ChildStdout> {
@@ -242,18 +243,18 @@ pub(crate) fn confirm_action(message: &str, default_value: bool) -> anyhow::Resu
 }
 
 pub async fn highlight_all_modules(
-    keyboard_controller: &KeyboardController,
+    sender: &mut Sender<KeyboardControllerMessage>,
     config: &Configuration,
     saturation: f32,
     lightness: f32,
 ) -> anyhow::Result<()> {
-    keyboard_controller.turn_all_off().await?;
+    KeyboardController::turn_all_off(sender).await?;
     let colors = color_list(config.modules.len(), saturation, lightness);
     for (i, module) in config.modules.iter().enumerate() {
         for led in &module.module_leds {
             let color = colors[i];
             if let Some(led) = led {
-                keyboard_controller.set_led_by_index(*led, color).await?;
+                KeyboardController::update_led(sender, *led, color).await?;
             }
         }
     }
@@ -261,7 +262,7 @@ pub async fn highlight_all_modules(
 }
 
 pub async fn highlight_one_module(
-    keyboard_controller: &KeyboardController,
+    sender: &mut Sender<KeyboardControllerMessage>,
     num_modules: usize,
     module_index: usize,
     module: &Module,
@@ -270,7 +271,7 @@ pub async fn highlight_one_module(
     for led in &module.module_leds {
         let color = colors[module_index];
         if let Some(led) = led {
-            keyboard_controller.set_led_by_index(*led, color).await?;
+            KeyboardController::update_led(sender, *led, color).await?;
         }
     }
     Ok(())
@@ -278,7 +279,7 @@ pub async fn highlight_one_module(
 
 /// Highlights a module with a rainbow palette to make the order of the LEDs clear
 pub async fn highlight_one_module_rainbow(
-    keyboard_controller: &KeyboardController,
+    sender: &mut Sender<KeyboardControllerMessage>,
     module: &Module,
 ) -> anyhow::Result<()> {
     let num_leds = module.module_leds.len();
@@ -286,7 +287,7 @@ pub async fn highlight_one_module_rainbow(
     for (i, led) in module.module_leds.iter().enumerate() {
         let color = colors[i];
         if let Some(led) = led {
-            keyboard_controller.set_led_by_index(*led, color).await?;
+            KeyboardController::update_led(sender, *led, color).await?;
         }
     }
     Ok(())
