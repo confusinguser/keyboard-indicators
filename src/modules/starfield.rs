@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use hsv::hsv_to_rgb;
-use openrgb::data::Color;
 use rand::Rng;
 use rgb::{ComponentMap, RGB, RGB8};
 use serde::{Deserialize, Serialize};
@@ -10,7 +9,7 @@ use tokio::sync::mpsc::Sender;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use crate::core::keyboard_controller::KeyboardController;
+use crate::core::keyboard_controller::{KeyboardController, KeyboardControllerMessage};
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub(crate) struct StarfieldModuleOptions {
@@ -42,11 +41,10 @@ impl StarfieldModule {
     pub fn run(
         task_tracker: &TaskTracker,
         cancellation_token: CancellationToken,
-        mut sender: Sender<(u32, Color)>,
+        mut sender: Sender<KeyboardControllerMessage>,
         module_leds: Vec<Option<u32>>,
         options: StarfieldModuleOptions,
     ) {
-        let options = StarfieldModuleOptions::default();
         task_tracker.spawn(async move {
             // The value in the map is how far along the LED has gotten in the animation
             let mut leds_animation: HashMap<u32, f32> = HashMap::new();

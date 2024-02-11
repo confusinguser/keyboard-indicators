@@ -11,7 +11,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use crate::core::config_manager::{self, Configuration};
-use crate::core::keyboard_controller::KeyboardController;
+use crate::core::keyboard_controller::{KeyboardController, KeyboardControllerMessage};
 use crate::core::module::{Module, ModuleType};
 use crate::core::utils::{
     self, default_terminal_settings, highlight_all_modules, highlight_one_module,
@@ -32,11 +32,11 @@ pub async fn module(args: &ArgMatches) -> anyhow::Result<()> {
         cancellation_token,
         receiver,
     );
-    keyboard_controller.lock().await.turn_all_off().await?;
+    KeyboardController::turn_all_off(&mut sender).await?;
 
     match args.subcommand_name() {
         Some("add") => add(&mut sender, &mut config).await?,
-        Some("remove") => remove(keyboard_controller, &mut sender, &mut config).await?,
+        Some("remove") => remove(&mut sender, &mut config).await?,
         Some("info") => info(&mut sender, &mut config).await?,
         Some("modify") => todo!(),
         _ => todo!(),
@@ -48,7 +48,7 @@ pub async fn module(args: &ArgMatches) -> anyhow::Result<()> {
 }
 
 pub async fn add(
-    sender: &mut Sender<(u32, Color)>,
+    sender: &mut Sender<KeyboardControllerMessage>,
     config: &mut Configuration,
 ) -> anyhow::Result<()> {
     println!("Choose a module to add:");
@@ -60,7 +60,7 @@ pub async fn add(
 }
 
 async fn add_module(
-    sender: &mut Sender<(u32, Color)>,
+    sender: &mut Sender<KeyboardControllerMessage>,
     config: &mut Configuration,
     module_type: ModuleType,
 ) -> anyhow::Result<()> {
@@ -106,8 +106,7 @@ async fn add_module(
         }
     }
     default_terminal_settings()?;
-    // TODO, make this work
-    // KeyboardController::turn_all_off().await?;
+    KeyboardController::turn_all_off(sender).await?;
     Ok(())
 }
 
@@ -132,8 +131,7 @@ fn choose_module_type_to_add() -> anyhow::Result<ModuleType> {
 }
 
 pub async fn remove(
-    keyboard_controller: Arc<Mutex<KeyboardController>>,
-    sender: &mut Sender<(u32, Color)>,
+    sender: &mut Sender<KeyboardControllerMessage>,
     config: &mut Configuration,
 ) -> anyhow::Result<()> {
     if config.modules.is_empty() {
@@ -174,7 +172,7 @@ pub async fn remove(
                     }
                 }
                 if let Some(module_selected) = module_selected {
-                    keyboard_controller.lock().await.turn_all_off().await?;
+                    KeyboardController::turn_all_off(sender).await?;
                     highlight_one_module(
                         sender,
                         config.modules.len(),
@@ -192,7 +190,7 @@ pub async fn remove(
                     if module_removal_confirmed {
                         config.modules.remove(module_selected.0);
                     }
-                    keyboard_controller.lock().await.turn_all_off().await?;
+                    KeyboardController::turn_all_off(sender).await?;
                     break;
                 } else {
                     println!("This button is not tied to a module");
@@ -218,7 +216,10 @@ Number of LEDs: {}",
     );
 }
 
-async fn info(sender: &mut Sender<(u32, Color)>, config: &mut Configuration) -> anyhow::Result<()> {
+async fn info(
+    sender: &mut Sender<KeyboardControllerMessage>,
+    config: &mut Configuration,
+) -> anyhow::Result<()> {
     println!("Choose a module to get info on by clicking a button in it");
     highlight_all_modules(sender, config, 100., 100.).await?;
 
@@ -255,13 +256,12 @@ async fn info(sender: &mut Sender<(u32, Color)>, config: &mut Configuration) -> 
                     // TODO Make user select between each module that has this button, also for remove
                     // subcommand
                     print_module_info(module_selected);
-                    //TODO
-                    // keyboard_controller.turn_all_off().await?;
+                    KeyboardController::turn_all_off(sender).await?;
                     highlight_all_modules(sender, config, 80., 10.).await?;
                     highlight_one_module_rainbow(sender, module_selected).await?;
                     utils::pause_until_click()?;
 
-                    // keyboard_controller.turn_all_off().await?;
+                    KeyboardController::turn_all_off(sender).await?;
                     break;
                 } else {
                     println!("This button is not tied to a module");

@@ -1,4 +1,3 @@
-use openrgb::data::Color;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::Sender;
 use tokio_util::sync::CancellationToken;
@@ -7,6 +6,8 @@ use tokio_util::task::TaskTracker;
 use crate::modules::media_playing::MediaModule;
 use crate::modules::starfield::{StarfieldModule, StarfieldModuleOptions};
 use crate::modules::workspaces::WorkspacesModule;
+
+use super::keyboard_controller::KeyboardControllerMessage;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct Module {
@@ -34,7 +35,7 @@ impl ModuleType {
         &self,
         task_tracker: &TaskTracker,
         cancellation_token: CancellationToken,
-        sender: Sender<(u32, Color)>,
+        sender: Sender<KeyboardControllerMessage>,
         module_leds: Vec<Option<u32>>,
     ) {
         match self {

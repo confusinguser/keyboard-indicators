@@ -8,13 +8,12 @@ use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
     PushKeyboardEnhancementFlags,
 };
-use openrgb::data::Color;
 use rgb::{ComponentMap, RGB, RGB8, RGBA8};
 use tokio::process::{self, ChildStdout};
 use tokio::sync::mpsc::Sender;
 
 use super::config_manager::Configuration;
-use super::keyboard_controller::KeyboardController;
+use super::keyboard_controller::{KeyboardController, KeyboardControllerMessage};
 use super::module::Module;
 
 pub(crate) fn run_command_async(command: &str) -> Option<ChildStdout> {
@@ -244,12 +243,12 @@ pub(crate) fn confirm_action(message: &str, default_value: bool) -> anyhow::Resu
 }
 
 pub async fn highlight_all_modules(
-    sender: &mut Sender<(u32, Color)>,
+    sender: &mut Sender<KeyboardControllerMessage>,
     config: &Configuration,
     saturation: f32,
     lightness: f32,
 ) -> anyhow::Result<()> {
-    // keyboard_controller.turn_all_off().await?;
+    KeyboardController::turn_all_off(sender).await?;
     let colors = color_list(config.modules.len(), saturation, lightness);
     for (i, module) in config.modules.iter().enumerate() {
         for led in &module.module_leds {
@@ -263,7 +262,7 @@ pub async fn highlight_all_modules(
 }
 
 pub async fn highlight_one_module(
-    sender: &mut Sender<(u32, Color)>,
+    sender: &mut Sender<KeyboardControllerMessage>,
     num_modules: usize,
     module_index: usize,
     module: &Module,
@@ -280,7 +279,7 @@ pub async fn highlight_one_module(
 
 /// Highlights a module with a rainbow palette to make the order of the LEDs clear
 pub async fn highlight_one_module_rainbow(
-    sender: &mut Sender<(u32, Color)>,
+    sender: &mut Sender<KeyboardControllerMessage>,
     module: &Module,
 ) -> anyhow::Result<()> {
     let num_leds = module.module_leds.len();

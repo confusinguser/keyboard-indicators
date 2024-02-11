@@ -1,18 +1,17 @@
 use std::sync::Arc;
 
 use clap::ArgMatches;
-use openrgb::data::Color;
 use tokio::signal;
 use tokio::sync::{mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use crate::core::config_manager;
-use crate::core::keyboard_controller::KeyboardController;
+use crate::core::keyboard_controller::{KeyboardController, KeyboardControllerMessage};
 
 pub(crate) async fn start(args: &ArgMatches) -> anyhow::Result<()> {
     let config = config_manager::read_config_and_keymap_from_args(args)?;
-    let (sender, receiver) = mpsc::channel::<(u32, Color)>(100);
+    let (sender, receiver) = mpsc::channel::<KeyboardControllerMessage>(100);
     let keyboard_controller = KeyboardController::connect().await?;
 
     let cancellation_token = CancellationToken::new();

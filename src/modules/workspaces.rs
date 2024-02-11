@@ -7,7 +7,7 @@ use swayipc_async::{Connection, EventType, WorkspaceChange, WorkspaceEvent};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use crate::core::keyboard_controller::KeyboardController;
+use crate::core::keyboard_controller::{KeyboardController, KeyboardControllerMessage};
 use crate::core::{constants, utils};
 use futures_util::stream::StreamExt;
 
@@ -17,7 +17,7 @@ impl WorkspacesModule {
     pub fn run(
         task_tracker: &TaskTracker,
         cancellation_token: CancellationToken,
-        mut sender: Sender<(u32, Color)>,
+        mut sender: Sender<KeyboardControllerMessage>,
         leds_order: Vec<Option<u32>>,
     ) {
         task_tracker.spawn(async move {
@@ -70,7 +70,7 @@ impl WorkspacesModule {
 impl WorkspacesModule {
     /// The event that is triggered whenever something happens with windows
     async fn on_window_event(
-        sender: &mut Sender<(u32, Color)>,
+        sender: &mut Sender<KeyboardControllerMessage>,
         leds_order: &[Option<u32>],
         event: Box<WorkspaceEvent>,
     ) -> anyhow::Result<()> {
@@ -85,7 +85,7 @@ impl WorkspacesModule {
     }
 
     async fn handle_workspace_change(
-        sender: &mut Sender<(u32, Color)>,
+        sender: &mut Sender<KeyboardControllerMessage>,
         leds_order: &[Option<u32>],
         event: &WorkspaceEvent,
         old: bool,

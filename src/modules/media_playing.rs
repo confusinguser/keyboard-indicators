@@ -1,4 +1,3 @@
-use openrgb::data::Color;
 use rgb::{ComponentMap, RGB8};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -7,7 +6,7 @@ use tokio::sync::mpsc::Sender;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use crate::core::keyboard_controller::KeyboardController;
+use crate::core::keyboard_controller::{KeyboardController, KeyboardControllerMessage};
 use crate::core::{constants, utils};
 
 pub(crate) struct MediaModule {}
@@ -16,7 +15,7 @@ impl MediaModule {
     pub(crate) fn run(
         task_tracker: &TaskTracker,
         cancellation_token: CancellationToken,
-        mut sender: Sender<(u32, Color)>,
+        mut sender: Sender<KeyboardControllerMessage>,
         module_leds: Vec<Option<u32>>,
     ) {
         let track_duration: Arc<Mutex<Option<Duration>>> = Arc::new(Mutex::new(None));
@@ -75,7 +74,9 @@ impl MediaModule {
                         let module_leds_clone = module_leds.clone();
                         // flatten() filters out None
                         for led_index in module_leds_clone.into_iter().flatten() {
-                            KeyboardController::update_led(&mut sender, led_index, color).await;
+                            KeyboardController::update_led_urgent(&mut sender, led_index, color)
+                                .await
+                                .unwrap();
                         }
                     }
                     tokio::select! {
@@ -132,7 +133,8 @@ impl MediaModule {
                             led_index,
                             color.map(|comp| (comp as f32 * order.1) as u8),
                         )
-                        .await;
+                        .await
+                        .unwrap();
                     }
                 }
                 last_progress = Some(progress);

@@ -10,12 +10,12 @@ use crate::core::config_manager::Configuration;
 use crate::core::keymap::Keymap;
 use crate::core::utils::default_terminal_settings;
 
-use super::keyboard_controller::KeyboardController;
+use super::keyboard_controller::{KeyboardController, KeyboardControllerMessage};
 use super::utils::prepare_terminal_event_capture;
 
 pub(crate) async fn start_config_creator(
     keyboard_controller: Arc<Mutex<KeyboardController>>,
-    sender: &mut Sender<(u32, Color)>,
+    sender: &mut Sender<KeyboardControllerMessage>,
     led_limit: Option<u32>,
 ) -> anyhow::Result<Configuration> {
     let mut config = Configuration::default();
@@ -31,12 +31,11 @@ pub(crate) async fn start_config_creator(
 }
 
 async fn build_first_in_row(
-    sender: &mut Sender<(u32, Color)>,
+    sender: &mut Sender<KeyboardControllerMessage>,
     keymap: &mut Keymap,
 ) -> anyhow::Result<()> {
     prepare_terminal_event_capture()?;
-    //TODO
-    // keyboard_controller.turn_all_off().await?;
+    KeyboardController::turn_all_off(sender).await?;
     loop {
         let event = crossterm::event::read().unwrap();
         if let Event::Key(event) = event {
@@ -62,7 +61,7 @@ async fn build_first_in_row(
             if event.kind == MouseEventKind::Down(MouseButton::Left) {
                 default_terminal_settings()?;
                 println!("Great. There are {} rows", keymap.first_in_row.len());
-                // keyboard_controller.turn_all_off().await?;
+                KeyboardController::turn_all_off(sender).await?;
                 break;
             }
         }
@@ -73,12 +72,12 @@ async fn build_first_in_row(
 
 async fn build_key_led_map(
     keyboard_controller: Arc<Mutex<KeyboardController>>,
-    sender: &mut Sender<(u32, Color)>,
+    sender: &mut Sender<KeyboardControllerMessage>,
     keymap: &mut Keymap,
     led_limit: Option<u32>,
 ) -> anyhow::Result<()> {
     prepare_terminal_event_capture()?;
-    keyboard_controller.lock().await.turn_all_off().await?;
+    KeyboardController::turn_all_off(sender).await?;
     for index in 0..keyboard_controller
         .lock()
         .await
@@ -125,7 +124,7 @@ async fn build_key_led_map(
 
 pub(crate) async fn create_keymap(
     keyboard_controller: Arc<Mutex<KeyboardController>>,
-    sender: &mut Sender<(u32, Color)>,
+    sender: &mut Sender<KeyboardControllerMessage>,
     led_limit: Option<u32>,
 ) -> anyhow::Result<Keymap> {
     let mut keymap = Keymap::default();
