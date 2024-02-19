@@ -277,6 +277,13 @@ pub async fn highlight_one_module(
     Ok(())
 }
 
+pub(crate) fn interpolate(from: RGB8, to: RGB8, progress: f32) -> rgb::RGB<u8> {
+    let mut out = RGB8::new(0, 0, 0);
+    out += from.map(|comp| (comp as f32 * (1. - progress)) as u8);
+    out += to.map(|comp| (comp as f32 * progress) as u8);
+    out
+}
+
 /// Highlights a module with a rainbow palette to make the order of the LEDs clear
 pub async fn highlight_one_module_rainbow(
     sender: &mut Sender<KeyboardControllerMessage>,
