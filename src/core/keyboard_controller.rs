@@ -122,12 +122,12 @@ impl KeyboardController {
                 if cancellation_token.is_cancelled() {
                     break;
                 }
-                // Get all messages that are currently in the receiver (max 100)
+                // Get all messages that are currently in the receiver (max 200)
                 let mut time_of_urgent_flag = None;
                 loop {
                     let all_messages_len = all_messages.len();
                     if all_messages_len >= 200 {
-                        println!("Over 100 messages were received in the same cycle");
+                        println!("Over 200 messages were received in the same cycle");
                         break;
                     }
                     let sleep_until = if let Some(urgent_flag) = time_of_urgent_flag {

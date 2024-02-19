@@ -4,6 +4,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use crate::modules::media_playing::MediaModule;
+use crate::modules::noise::{NoiseModule, NoiseModuleOptions};
 use crate::modules::starfield::{StarfieldModule, StarfieldModuleOptions};
 use crate::modules::workspaces::WorkspacesModule;
 
@@ -28,6 +29,7 @@ pub(crate) enum ModuleType {
     Workspaces,
     Media,
     Starfield(StarfieldModuleOptions),
+    Noise(NoiseModuleOptions),
 }
 
 impl ModuleType {
@@ -48,6 +50,9 @@ impl ModuleType {
             ModuleType::Starfield(opts) => {
                 StarfieldModule::run(task_tracker, cancellation_token, sender, module_leds, *opts)
             }
+            ModuleType::Noise(opts) => {
+                NoiseModule::run(task_tracker, cancellation_token, sender, module_leds, *opts)
+            }
         }
     }
 
@@ -55,7 +60,8 @@ impl ModuleType {
         match self {
             ModuleType::Workspaces => "Sway Workspaces",
             ModuleType::Media => "Media Player Monitor",
-            ModuleType::Starfield(_) => "Starfield Ambient Module",
+            ModuleType::Starfield(_) => "Starfield Ambient",
+            ModuleType::Noise(_) => "Noise",
         }
     }
     pub(crate) fn desc(&self) -> &'static str {
@@ -63,14 +69,16 @@ impl ModuleType {
             ModuleType::Workspaces => "",
             ModuleType::Media => "Shows media playhead and platform on keyboard",
             ModuleType::Starfield(_) => "",
+            ModuleType::Noise(_) => "Noise thing",
         }
     }
 
-    pub(crate) fn all_module_types() -> [ModuleType; 3] {
+    pub(crate) fn all_module_types() -> [ModuleType; 4] {
         [
             ModuleType::Workspaces,
             ModuleType::Media,
             ModuleType::Starfield(StarfieldModuleOptions::default()),
+            ModuleType::Noise(NoiseModuleOptions::default()),
         ]
     }
 }
