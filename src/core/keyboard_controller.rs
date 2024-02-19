@@ -111,7 +111,7 @@ impl KeyboardController {
     ) {
         task_tracker.spawn(async move {
             let mut lock = keyboard_controller.lock().await;
-            let mut all_messages: Vec<KeyboardControllerMessage> = Vec::with_capacity(100);
+            let mut all_messages: Vec<KeyboardControllerMessage> = Vec::with_capacity(200);
             for _ in lock.current_colors.len()..lock.num_leds() as usize {
                 lock.current_colors.push(RGB::from((0, 0, 0)));
             }
@@ -126,14 +126,14 @@ impl KeyboardController {
                 let mut time_of_urgent_flag = None;
                 loop {
                     let all_messages_len = all_messages.len();
-                    if all_messages_len >= 100 {
-                        println!("Over 100 messages were received in the same cycle");
+                    if all_messages_len >= 200 {
+                        println!("Over 200 messages were received in the same cycle");
                         break;
                     }
                     let sleep_until = if let Some(urgent_flag) = time_of_urgent_flag {
                         urgent_flag + Duration::from_millis(1)
                     } else {
-                        time_of_last_update + Duration::from_millis(100)
+                        time_of_last_update + Duration::from_millis(10)
                     };
                     let message = tokio::select! {
                         _ = tokio::time::sleep_until(sleep_until) => None,
