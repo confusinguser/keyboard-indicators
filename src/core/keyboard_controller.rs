@@ -170,10 +170,12 @@ impl KeyboardController {
                         }
                     }
                 }
-                lock.client
-                    .update_leds(lock.controller_id, lock.current_colors.clone())
-                    .await
-                    .unwrap();
+                if !all_messages.is_empty() {
+                    lock.client
+                        .update_leds(lock.controller_id, lock.current_colors.clone())
+                        .await
+                        .unwrap();
+                }
                 drop(lock);
 
                 time_of_last_update = Instant::now();
