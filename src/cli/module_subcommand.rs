@@ -1,8 +1,8 @@
-use std::io::{self, BufRead};
+use anyhow::bail;
+use std::borrow::Borrow;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use anyhow::bail;
 use clap::ArgMatches;
 use crossterm::event::{Event, KeyCode, KeyModifiers, MouseButton, MouseEventKind};
 use openrgb::data::Color;
@@ -37,7 +37,7 @@ pub async fn module(args: &ArgMatches) -> anyhow::Result<()> {
     match args.subcommand_name() {
         Some("add") => add(&mut sender, &mut config).await?,
         Some("remove") => remove(&mut sender, &mut config).await?,
-        Some("info") => info(&mut sender, &mut config).await?,
+        Some("info") => info(&mut sender, &config).await?,
         Some("modify") => todo!(),
         _ => todo!(),
     }
@@ -112,24 +112,15 @@ async fn add_module(
 
 fn choose_module_type_to_add() -> anyhow::Result<ModuleType> {
     let all_module_types = ModuleType::all_module_types();
-    for (i, module) in all_module_types.iter().enumerate() {
-        println!("{}) {} -- {}", i + 1, module.name(), module.desc())
-    }
-    let stdin = io::stdin();
-    for line in stdin.lock().lines() {
-        let Ok(number_chosen) = line?.parse::<usize>() else {
-            println!("Not a number");
-            continue;
-        };
-        if number_chosen > all_module_types.len() {
-            println!("Not an option");
-            continue;
-        }
-        return Ok(all_module_types[number_chosen - 1]);
-    }
-    bail!("No option chosen");
+    let options: Vec<String> = all_module_types
+        .iter()
+        .map(|module| format!("{} -- {}", module.name(), module.desc()))
+        .collect();
+
+    Ok(all_module_types[utils::choose_option(&options)?])
 }
 
+/// TODO make lock for this. If multiple processes run with this, it can lead to bad stuff
 pub async fn remove(
     sender: &mut Sender<KeyboardControllerMessage>,
     config: &mut Configuration,
@@ -140,67 +131,23 @@ pub async fn remove(
     }
 
     println!("Choose a module to remove by clicking on a button in it");
-    highlight_all_modules(sender, config, 100., 100.).await?;
+    let module_index = choose_module_on_keyboard(sender, config).await?;
+    let Some(module) = config.modules.get(module_index) else {
+        bail!("No module selected")
+    };
+    KeyboardController::turn_all_off(sender).await?;
 
-    utils::prepare_terminal_event_capture()?;
-    loop {
-        let event = crossterm::event::read().unwrap();
-        if let Event::Key(event) = event {
-            if event.kind != crossterm::event::KeyEventKind::Press {
-                continue;
-            }
-            if event.modifiers.intersects(KeyModifiers::CONTROL) && event.code == KeyCode::Char('c')
-            {
-                default_terminal_settings()?;
-                panic!("Interrupted by user");
-            }
-            default_terminal_settings()?;
-            if let Some(&index_pressed) = config.keymap.key_led_map.get(&event.code) {
-                let mut module_selected = None;
-                for (i, module) in config.modules.iter().enumerate() {
-                    for led in &module.module_leds {
-                        let Some(led) = led else {
-                            continue;
-                        };
-                        if index_pressed == *led {
-                            module_selected = Some((i, module));
-                            break;
-                        }
-                    }
-                    if module_selected.is_some() {
-                        break;
-                    }
-                }
-                if let Some(module_selected) = module_selected {
-                    KeyboardController::turn_all_off(sender).await?;
-                    highlight_one_module(
-                        sender,
-                        config.modules.len(),
-                        module_selected.0,
-                        module_selected.1,
-                    )
-                    .await?;
+    highlight_one_module(sender, config.modules.len(), module_index, module).await?;
 
-                    print_module_info(module_selected.1);
-                    let module_removal_confirmed = utils::confirm_action(
-                        "Are you sure you want to remove this module? [y/N] ",
-                        false,
-                    )?;
+    print_module_info(module);
+    let module_removal_confirmed =
+        utils::confirm_action("Are you sure you want to remove this module? [y/N] ", false)?;
 
-                    if module_removal_confirmed {
-                        config.modules.remove(module_selected.0);
-                    }
-                    KeyboardController::turn_all_off(sender).await?;
-                    break;
-                } else {
-                    println!("This button is not tied to a module");
-                }
-            } else {
-                println!("This button is not tied to an LED");
-            }
-            prepare_terminal_event_capture()?;
-        }
+    if module_removal_confirmed {
+        config.modules.remove(module_index);
     }
+    KeyboardController::turn_all_off(sender).await?;
+
     default_terminal_settings()?;
     Ok(())
 }
@@ -216,14 +163,13 @@ Number of LEDs: {}",
     );
 }
 
-async fn info(
+async fn choose_module_on_keyboard(
     sender: &mut Sender<KeyboardControllerMessage>,
-    config: &mut Configuration,
-) -> anyhow::Result<()> {
-    println!("Choose a module to get info on by clicking a button in it");
+    config: &Configuration,
+) -> anyhow::Result<usize> {
     highlight_all_modules(sender, config, 100., 100.).await?;
-
     utils::prepare_terminal_event_capture()?;
+
     loop {
         let event = crossterm::event::read().unwrap();
         if let Event::Key(event) = event {
@@ -237,41 +183,80 @@ async fn info(
             }
             default_terminal_settings()?;
             if let Some(&index_pressed) = config.keymap.key_led_map.get(&event.code) {
-                let mut module_selected = None;
-                for module in &config.modules {
-                    for led in &module.module_leds {
-                        let Some(led) = led else {
-                            continue;
-                        };
+                let mut module_index = None;
+                for (i, module) in config.modules.iter().enumerate() {
+                    for led in module.module_leds.iter().flatten() {
                         if index_pressed == *led {
-                            module_selected = Some(module);
+                            module_index = Some(i);
                             break;
                         }
                     }
-                    if module_selected.is_some() {
+                    if module_index.is_some() {
                         break;
                     }
                 }
-                if let Some(module_selected) = module_selected {
-                    // TODO Make user select between each module that has this button, also for remove
-                    // subcommand
-                    print_module_info(module_selected);
-                    KeyboardController::turn_all_off(sender).await?;
-                    highlight_all_modules(sender, config, 80., 10.).await?;
-                    highlight_one_module_rainbow(sender, module_selected).await?;
-                    utils::pause_until_click()?;
-
-                    KeyboardController::turn_all_off(sender).await?;
-                    break;
-                } else {
+                let Some(module_index) = module_index else {
                     println!("This button is not tied to a module");
-                }
+                    continue;
+                };
+                // TODO Make user select between each module that has this button
+                return Ok(module_index);
             } else {
                 println!("This button is not tied to an LED");
             }
             prepare_terminal_event_capture()?;
         }
     }
+}
+
+async fn info(
+    sender: &mut Sender<KeyboardControllerMessage>,
+    config: &Configuration,
+) -> anyhow::Result<()> {
+    println!("Choose a module to get info on by clicking a button in it");
+    let module_index = choose_module_on_keyboard(sender, config).await?;
+    let module = config.modules.get(module_index).unwrap();
+
+    print_module_info(module);
+    KeyboardController::turn_all_off(sender).await?;
+    highlight_all_modules(sender, config, 80., 10.).await?;
+    highlight_one_module_rainbow(sender, module).await?;
+    utils::pause_until_click()?;
+
+    KeyboardController::turn_all_off(sender).await?;
     default_terminal_settings()?;
+    Ok(())
+}
+
+async fn modify(
+    sender: &mut Sender<KeyboardControllerMessage>,
+    config: &mut Configuration,
+) -> anyhow::Result<()> {
+    let module_index = choose_module_on_keyboard(sender, config).await?;
+    let Some(module) = config.modules.get_mut(module_index) else {
+        bail!("No module selected")
+    };
+
+    // Present options for modification and handle user input
+    loop {
+        let option = utils::choose_option(&vec!["Modify LEDs", "Modify settings", "Cancel"])?;
+
+        match option {
+            0 => modify_leds(module)?,
+            1 => modify_settings(module)?,
+            2 => break,
+            _ => println!("Invalid option"),
+        }
+    }
+
+    Ok(())
+}
+
+fn modify_settings(module: &mut Module) -> anyhow::Result<()> {
+    todo!()
+}
+
+fn modify_leds(module_to_modify: &mut Module) -> anyhow::Result<()> {
+    // Implement logic to modify LEDs of the module
     Ok(())
 }

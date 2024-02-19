@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 
 use anyhow::bail;
+use anyhow::Result;
 use clap::ArgMatches;
 use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
@@ -282,6 +283,27 @@ pub(crate) fn interpolate(from: RGB8, to: RGB8, progress: f32) -> rgb::RGB<u8> {
     out += from.map(|comp| (comp as f32 * (1. - progress)) as u8);
     out += to.map(|comp| (comp as f32 * progress) as u8);
     out
+}
+
+pub(crate) fn choose_option(options: &[impl AsRef<str>]) -> Result<usize> {
+    for (i, option) in options.iter().enumerate() {
+        println!("{}) {}", i + 1, option.as_ref());
+    }
+
+    let stdin = io::stdin();
+    for line in stdin.lock().lines() {
+        if let Ok(number_chosen) = line.unwrap().trim().parse::<usize>() {
+            if number_chosen > 0 && number_chosen <= options.len() {
+                return Ok(number_chosen - 1);
+            }
+        }
+        println!(
+            "Invalid option. Please choose a number between 1 and {}",
+            options.len()
+        );
+    }
+
+    Err(anyhow::anyhow!("No valid option chosen"))
 }
 
 /// Highlights a module with a rainbow palette to make the order of the LEDs clear
