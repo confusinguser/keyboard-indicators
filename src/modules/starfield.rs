@@ -18,7 +18,6 @@ pub(crate) struct StarfieldModuleOptions {
     pub(crate) target_color: RGB8,
     pub(crate) probability: f64,
     pub(crate) animation_time: Duration,
-    #[serde(default)]
     pub(crate) time_variation: f32,
 }
 
@@ -70,8 +69,12 @@ impl StarfieldModule {
                     .unwrap();
                     *progress += (now - last_update).as_secs_f32()
                         / (options.animation_time.as_secs_f32()
-                            + rand::thread_rng()
-                                .gen_range(-options.time_variation..options.time_variation));
+                            + if options.time_variation != 0. {
+                                rand::thread_rng()
+                                    .gen_range(-options.time_variation..options.time_variation)
+                            } else {
+                                0.
+                            });
                     if *progress >= 1. {
                         *progress %= 1.;
                     }
