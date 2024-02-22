@@ -1,5 +1,4 @@
 use anyhow::bail;
-use std::borrow::Borrow;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -15,15 +14,17 @@ use crate::core::keyboard_controller::{KeyboardController, KeyboardControllerMes
 use crate::core::module::{Module, ModuleType};
 use crate::core::utils::{
     self, default_terminal_settings, highlight_all_modules, highlight_one_module,
-    highlight_one_module_rainbow, prepare_terminal_event_capture,
+    highlight_one_module_rainbow, prepare_terminal_event_capture, rgb_to_hex,
 };
+use crate::modules::noise::NoiseModuleOptions;
+use crate::modules::starfield::StarfieldModuleOptions;
 
 pub async fn module(args: &ArgMatches) -> anyhow::Result<()> {
     let config_path = utils::get_config_path(args)?;
     let keymap_path = utils::get_keymap_path(args)?;
-    let mut config = config_manager::read_config_and_keymap(&config_path, &keymap_path)?;
+    let mut config = config_manager::read_config_and_keymap(config_path, keymap_path)?;
     let keyboard_controller = KeyboardController::connect().await?;
-    let (mut sender, receiver) = mpsc::channel(100);
+    let (mut sender, receiver) = mpsc::channel(200);
     let cancellation_token = CancellationToken::new();
     let keyboard_controller = Arc::new(Mutex::new(keyboard_controller));
     KeyboardController::run(
@@ -38,11 +39,11 @@ pub async fn module(args: &ArgMatches) -> anyhow::Result<()> {
         Some("add") => add(&mut sender, &mut config).await?,
         Some("remove") => remove(&mut sender, &mut config).await?,
         Some("info") => info(&mut sender, &config).await?,
-        Some("modify") => todo!(),
+        Some("modify") => modify(&mut sender, &mut config).await?,
         _ => todo!(),
     }
 
-    config_manager::write_config_and_keymap(&config_path, &keymap_path, &config)?;
+    config_manager::write_config_and_keymap(&config.config_path, &config.keymap_path, &config)?;
 
     Ok(())
 }
@@ -233,27 +234,90 @@ async fn modify(
     config: &mut Configuration,
 ) -> anyhow::Result<()> {
     let module_index = choose_module_on_keyboard(sender, config).await?;
-    let Some(module) = config.modules.get_mut(module_index) else {
-        bail!("No module selected")
-    };
 
     // Present options for modification and handle user input
     loop {
-        let option = utils::choose_option(&vec!["Modify LEDs", "Modify settings", "Cancel"])?;
+        let Some(module) = config.modules.get_mut(module_index) else {
+            bail!("No module selected")
+        };
+        let option = utils::choose_option(&[
+            "Modify LEDs",
+            "Modify settings",
+            "Reset settings to default",
+            "Exit",
+        ])?;
 
         match option {
             0 => modify_leds(module)?,
             1 => modify_settings(module)?,
-            2 => break,
+            2 => reset_settings_to_default(module),
+            3 => break,
             _ => println!("Invalid option"),
         }
+
+        // Save after each change. Investigate if this is better than having a save and exit TODO
+        config_manager::write_config_and_keymap(&config.config_path, &config.keymap_path, config)?;
     }
 
     Ok(())
 }
 
+fn reset_settings_to_default(module: &mut Module) {
+    match module.module_type {
+        ModuleType::Workspaces => {}
+        ModuleType::Media => {}
+        ModuleType::Starfield(ref mut opts) => *opts = StarfieldModuleOptions::default(),
+        ModuleType::Noise(ref mut opts) => *opts = NoiseModuleOptions::default(),
+    }
+    println!("Reset settings to default")
+}
+
 fn modify_settings(module: &mut Module) -> anyhow::Result<()> {
-    todo!()
+    macro_rules! add_choice {
+        ($choices: tt, $val: expr, $name: expr) => {
+            $choices.push(format!("{} [Current: {}]", $name, $val));
+        };
+    }
+    let mut choices = Vec::new();
+    match module.module_type {
+        ModuleType::Workspaces => todo!(),
+        ModuleType::Media => todo!(),
+        ModuleType::Starfield(opts) => {
+            todo!()
+        }
+        ModuleType::Noise(ref mut opts) => {
+            add_choice!(choices, rgb_to_hex(opts.color1), "First color");
+            add_choice!(choices, rgb_to_hex(opts.color2), "Second color");
+            add_choice!(choices, opts.speed, "Speed");
+            add_choice!(choices, opts.zoom_factor, "Zoom factor");
+            let option_chosen = utils::choose_option(&choices)?;
+
+            println!("Enter new value: ");
+            match option_chosen {
+                0 => {
+                    let new_color = utils::get_color_input()?;
+                    opts.color1 = new_color;
+                }
+                1 => {
+                    let new_color = utils::get_color_input()?;
+                    opts.color2 = new_color;
+                }
+                2 => {
+                    let new_speed =
+                        utils::get_input("Invalid number", |input| input.parse::<f32>().ok())?;
+                    opts.speed = new_speed;
+                }
+                3 => {
+                    let new_zoom_factor =
+                        utils::get_input("Invalid number", |input| input.parse::<f32>().ok())?;
+                    opts.zoom_factor = new_zoom_factor;
+                }
+                _ => {}
+            };
+        }
+    }
+
+    Ok(())
 }
 
 fn modify_leds(module_to_modify: &mut Module) -> anyhow::Result<()> {

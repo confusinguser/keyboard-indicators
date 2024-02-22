@@ -15,15 +15,21 @@ pub(crate) struct Configuration {
     #[serde(default)]
     pub(crate) keymap: Keymap,
     pub(crate) modules: Vec<Module>,
+    #[serde(skip_serializing)]
+    #[serde(default)]
+    pub(crate) config_path: PathBuf,
+    #[serde(skip_serializing)]
+    #[serde(default)]
+    pub(crate) keymap_path: PathBuf,
 }
 
 /// Returns None if the file is not found, an error in the case of another error, and the
 /// deserialized config object in case the files are found
 pub(crate) fn read_config_and_keymap(
-    config_path: &PathBuf,
-    keymap_path: &PathBuf,
+    config_path: PathBuf,
+    keymap_path: PathBuf,
 ) -> anyhow::Result<Configuration> {
-    let contents = fs::read_to_string(config_path);
+    let contents = fs::read_to_string(&config_path);
     let mut config;
     if let Err(error) = contents {
         if error.kind() == io::ErrorKind::NotFound {
@@ -38,17 +44,19 @@ pub(crate) fn read_config_and_keymap(
             serde_yaml::from_str::<Configuration>(&contents).context("Error reading the config")?;
     }
 
-    let contents = fs::read_to_string(keymap_path)
+    let contents = fs::read_to_string(&keymap_path)
         .context("There is no keymap file. Run the create-keymap subcommand to construct one.")?;
     let keymap = serde_yaml::from_str::<Keymap>(&contents)?;
     config.keymap = keymap;
+    config.config_path = config_path;
+    config.keymap_path = keymap_path;
     Ok(config)
 }
 
 pub(crate) fn read_config_and_keymap_from_args(args: &ArgMatches) -> anyhow::Result<Configuration> {
     let config_path = utils::get_config_path(args)?;
     let keymap_path = utils::get_keymap_path(args)?;
-    read_config_and_keymap(&config_path, &keymap_path)
+    read_config_and_keymap(config_path, keymap_path)
 }
 
 pub(crate) fn write_config(path: &PathBuf, configuration: &Configuration) -> anyhow::Result<()> {

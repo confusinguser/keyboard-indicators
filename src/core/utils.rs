@@ -292,7 +292,7 @@ pub(crate) fn choose_option(options: &[impl AsRef<str>]) -> Result<usize> {
 
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
-        if let Ok(number_chosen) = line.unwrap().trim().parse::<usize>() {
+        if let Ok(number_chosen) = line?.trim().parse::<usize>() {
             if number_chosen > 0 && number_chosen <= options.len() {
                 return Ok(number_chosen - 1);
             }
@@ -304,6 +304,68 @@ pub(crate) fn choose_option(options: &[impl AsRef<str>]) -> Result<usize> {
     }
 
     Err(anyhow::anyhow!("No valid option chosen"))
+}
+
+pub(crate) fn rgb_to_hex(rgb: RGB8) -> String {
+    format!("#{:02X}{:02X}{:02X}", rgb.r, rgb.g, rgb.b)
+}
+
+pub(crate) fn get_color_input() -> Result<RGB<u8>> {
+    println!("Write new color: ");
+    get_input("Invalid RGB value. RGB values must be integers between 0 and 255, separated by commas or spaces, or a valid hexadecimal value (e.g., '#RRGGBB')", |input| parse_rgb(input).ok())
+}
+
+/// Takes in a closure which is applied on a line inputted by user. If the closure returns None, it
+/// prints error_message and waits for more user input. This happens until the input from user
+/// gives a Some value from closure, which is then returned
+pub(crate) fn get_input<T, F>(error_message: &str, mut f: F) -> Result<T>
+where
+    F: FnMut(&str) -> Option<T>,
+{
+    loop {
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let function_output = f(input.trim());
+
+        if let Some(function_output) = function_output {
+            return Ok(function_output);
+        }
+        println!("{}", error_message);
+    }
+}
+
+pub(crate) fn parse_rgb(input: &str) -> Result<RGB8> {
+    fn split_decimal_input(input: &str) -> Option<(&str, &str, &str)> {
+        let parts: Vec<&str> = input
+            .split(|c| c == ',' || c == ' ')
+            .filter(|&part| !part.is_empty())
+            .collect();
+        match (parts.get(0), parts.get(1), parts.get(2), parts.get(3)) {
+            (Some(&r), Some(&g), Some(&b), None) => Some((r, g, b)),
+            _ => None,
+        }
+    }
+    let input = input.trim();
+
+    if input.len() == 6 || input.starts_with('#') && input.len() == 7 {
+        // Remove the #
+        let input = if input.len() == 7 { &input[1..] } else { input };
+        // Handle hexadecimal format
+        let r = u8::from_str_radix(&input[0..2], 16)?;
+        let g = u8::from_str_radix(&input[2..4], 16)?;
+        let b = u8::from_str_radix(&input[4..6], 16)?;
+
+        Ok((r, g, b).into())
+    } else if let Some((r_str, g_str, b_str)) = split_decimal_input(input) {
+        // Assume the input is in the format "r g b", "r,g,b" or "r, g, b"
+        let r = r_str.parse()?;
+        let g = g_str.parse()?;
+        let b = b_str.parse()?;
+
+        Ok((r, g, b).into())
+    } else {
+        Err(anyhow::anyhow!("Invalid RGB value. RGB values must be integers between 0 and 255, separated by commas or spaces, or a valid hexadecimal value (e.g., '#RRGGBB')"))
+    }
 }
 
 /// Highlights a module with a rainbow palette to make the order of the LEDs clear
