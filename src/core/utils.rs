@@ -115,7 +115,7 @@ pub(crate) fn progress_bar_diff(
     out
 }
 
-pub(crate) fn prepare_terminal_event_capture() -> anyhow::Result<()> {
+pub(crate) fn prepare_terminal_event_capture() -> Result<()> {
     let supports_keyboard_enhancement = matches!(
         crossterm::terminal::supports_keyboard_enhancement(),
         Ok(true)
@@ -145,7 +145,7 @@ pub(crate) fn prepare_terminal_event_capture() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub(crate) fn default_terminal_settings() -> anyhow::Result<()> {
+pub(crate) fn default_terminal_settings() -> Result<()> {
     let supports_keyboard_enhancement = matches!(
         crossterm::terminal::supports_keyboard_enhancement(),
         Ok(true)
@@ -166,7 +166,7 @@ pub(crate) fn default_terminal_settings() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub(crate) fn get_keymap_path(args: &ArgMatches) -> anyhow::Result<PathBuf> {
+pub(crate) fn get_keymap_path(args: &ArgMatches) -> Result<PathBuf> {
     let keymap_path = match args.get_one::<PathBuf>("keymap") {
         None => dirs::config_dir().map(|pathbuf| pathbuf.join("keyboard-indicators/keymap.yaml")),
         Some(pathbuf) => Some(pathbuf.clone()),
@@ -179,7 +179,7 @@ pub(crate) fn get_keymap_path(args: &ArgMatches) -> anyhow::Result<PathBuf> {
     Ok(keymap_path)
 }
 
-pub(crate) fn get_config_path(args: &ArgMatches) -> anyhow::Result<PathBuf> {
+pub(crate) fn get_config_path(args: &ArgMatches) -> Result<PathBuf> {
     let keymap_path = match args.get_one::<PathBuf>("config") {
         None => dirs::config_dir().map(|pathbuf| pathbuf.join("keyboard-indicators/config.yaml")),
         Some(pathbuf) => Some(pathbuf.clone()),
@@ -211,7 +211,7 @@ pub(crate) fn color_list(len: usize, saturation: f32, lightness: f32) -> Vec<ope
     out
 }
 
-pub(crate) fn pause_until_click() -> anyhow::Result<()> {
+pub(crate) fn pause_until_click() -> Result<()> {
     let mut stdin = io::stdin();
     let mut stdout = io::stdout();
 
@@ -224,7 +224,7 @@ pub(crate) fn pause_until_click() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub(crate) fn confirm_action(message: &str, default_value: bool) -> anyhow::Result<bool> {
+pub(crate) fn confirm_action(message: &str, default_value: bool) -> Result<bool> {
     print!("{}", message);
     io::stdout().flush()?;
     let stdin = io::stdin();
@@ -248,7 +248,7 @@ pub async fn highlight_all_modules(
     config: &Configuration,
     saturation: f32,
     lightness: f32,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     KeyboardController::turn_all_off(sender).await?;
     let colors = color_list(config.modules.len(), saturation, lightness);
     for (i, module) in config.modules.iter().enumerate() {
@@ -267,7 +267,7 @@ pub async fn highlight_one_module(
     num_modules: usize,
     module_index: usize,
     module: &Module,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     let colors = color_list(num_modules, 100., 100.);
     for led in &module.module_leds {
         let color = colors[module_index];
@@ -278,7 +278,7 @@ pub async fn highlight_one_module(
     Ok(())
 }
 
-pub(crate) fn interpolate(from: RGB8, to: RGB8, progress: f32) -> rgb::RGB<u8> {
+pub(crate) fn interpolate(from: RGB8, to: RGB8, progress: f32) -> RGB<u8> {
     let mut out = RGB8::new(0, 0, 0);
     out += from.map(|comp| (comp as f32 * (1. - progress)) as u8);
     out += to.map(|comp| (comp as f32 * progress) as u8);
@@ -372,7 +372,7 @@ pub(crate) fn parse_rgb(input: &str) -> Result<RGB8> {
 pub async fn highlight_one_module_rainbow(
     sender: &mut Sender<KeyboardControllerMessage>,
     module: &Module,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     let num_leds = module.module_leds.len();
     let colors = color_list(num_leds, 100., 100.);
     for (i, led) in module.module_leds.iter().enumerate() {

@@ -84,7 +84,7 @@ impl StarfieldModule {
     }
 }
 
-fn animation_curve(background: RGB8, target: RGB8, progress: f32) -> rgb::RGB<u8> {
+fn animation_curve(background: RGB8, target: RGB8, progress: f32) -> RGB<u8> {
     if progress < 0.5 {
         utils::interpolate(background, target, progress * 2.)
     } else {

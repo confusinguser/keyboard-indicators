@@ -106,7 +106,7 @@ fn led_value<T: NoiseFn<f64, 3>>(
     depth: f64,
     x: f64,
     y: f64,
-) -> rgb::RGB<u8> {
+) -> RGB<u8> {
     let interpolation = noise.get([x, y, depth]);
     utils::interpolate(background, target, interpolation as f32)
 }

@@ -65,7 +65,7 @@ async fn add_module(
     config: &mut Configuration,
     module_type: ModuleType,
 ) -> anyhow::Result<()> {
-    utils::prepare_terminal_event_capture()?;
+    prepare_terminal_event_capture()?;
     let mut module_leds = Vec::new();
     loop {
         let event = crossterm::event::read().unwrap();
@@ -169,7 +169,7 @@ async fn choose_module_on_keyboard(
     config: &Configuration,
 ) -> anyhow::Result<usize> {
     highlight_all_modules(sender, config, 100., 100.).await?;
-    utils::prepare_terminal_event_capture()?;
+    prepare_terminal_event_capture()?;
 
     loop {
         let event = crossterm::event::read().unwrap();

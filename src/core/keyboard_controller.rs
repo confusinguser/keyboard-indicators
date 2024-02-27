@@ -165,7 +165,7 @@ impl KeyboardController {
                         }
                         lock.current_colors[led as usize] = message.color;
                     } else {
-                        for i in 0..lock.current_colors.len() as usize {
+                        for i in 0..lock.current_colors.len() {
                             lock.current_colors[i] = Color::new(0, 0, 0);
                         }
                     }
