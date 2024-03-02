@@ -16,7 +16,7 @@ use crate::core::keyboard_controller::{KeyboardController, KeyboardControllerMes
 use crate::core::module::{Module, ModuleType};
 use crate::core::utils::{
     self, default_terminal_settings, highlight_all_modules, highlight_one_module,
-    highlight_one_module_rainbow, prepare_terminal_event_capture, rgb_to_hex,
+    highlight_one_module_rainbow, prepare_terminal_event_capture,
 };
 use crate::modules::noise::NoiseModuleOptions;
 use crate::modules::starfield::StarfieldModuleOptions;
@@ -291,49 +291,15 @@ fn reset_settings_to_default(module: &mut Module) {
 }
 
 fn modify_settings(module: &mut Module) -> Result<()> {
-    macro_rules! add_choice {
-        ($choices: tt, $val: expr, $name: expr) => {
-            $choices.push(format!("{} [Current: {}]", $name, $val));
-        };
-    }
-    let mut choices = Vec::new();
-    match module.module_type {
-        ModuleType::Workspaces => todo!(),
-        ModuleType::Media => todo!(),
-        ModuleType::Starfield(opts) => {
-            todo!()
-        }
-        ModuleType::Noise(ref mut opts) => {
-            add_choice!(choices, rgb_to_hex(opts.color1), "First color");
-            add_choice!(choices, rgb_to_hex(opts.color2), "Second color");
-            add_choice!(choices, opts.speed, "Speed");
-            add_choice!(choices, opts.zoom_factor, "Zoom factor");
-            let option_chosen = utils::choose_option(&choices)?;
+    let (choices_names, mut choices_handlers) =
+        module
+            .module_type
+            .add_all_settings();
+    let option_chosen = utils::choose_option(&choices_names)?;
 
-            println!("Enter new value: ");
-            match option_chosen {
-                0 => {
-                    let new_color = utils::get_color_input()?;
-                    opts.color1 = new_color;
-                }
-                1 => {
-                    let new_color = utils::get_color_input()?;
-                    opts.color2 = new_color;
-                }
-                2 => {
-                    let new_speed =
-                        utils::get_input("Invalid number", |input| input.parse::<f32>().ok())?;
-                    opts.speed = new_speed;
-                }
-                3 => {
-                    let new_zoom_factor =
-                        utils::get_input("Invalid number", |input| input.parse::<f32>().ok())?;
-                    opts.zoom_factor = new_zoom_factor;
-                }
-                _ => {}
-            };
-        }
-    }
+    println!("Enter new value: ");
+    // We remove to obtain ownership of the handler. We then call the handler
+    choices_handlers.remove(option_chosen)(&mut module.module_type);
 
     Ok(())
 }
