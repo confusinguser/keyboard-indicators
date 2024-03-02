@@ -1,8 +1,12 @@
+use std::time::Duration;
+
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::Sender;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
+use crate::core::utils;
+use crate::core::utils::rgb_to_hex;
 use crate::modules::media_playing::MediaModule;
 use crate::modules::noise::{NoiseModule, NoiseModuleOptions};
 use crate::modules::starfield::{StarfieldModule, StarfieldModuleOptions};
@@ -15,6 +19,7 @@ pub(crate) struct Module {
     pub(crate) module_type: ModuleType,
     pub(crate) module_leds: Vec<Option<u32>>,
 }
+
 impl Module {
     pub(crate) fn new(module_type: ModuleType, module_leds: Vec<Option<u32>>) -> Self {
         Self {
@@ -72,7 +77,74 @@ impl ModuleType {
             ModuleType::Noise(_) => "Noise thing",
         }
     }
-
+    pub(crate) fn add_all_settings(&self) -> (Vec<String>, Vec<Box<fn(&mut ModuleType)>>) {
+        let mut choices_names: Vec<String> = Vec::new();
+        let mut choices_handlers: Vec<Box<fn(&mut ModuleType)>> = Vec::new();
+        macro_rules! add_choice {
+            ($val: expr, $name: expr, $handler: expr) => {
+                choices_names.push(format!("{} [Current: {:?}]", $name, $val));
+                choices_handlers.push(Box::new($handler));
+            };
+        }
+        match self {
+            ModuleType::Workspaces => todo!(),
+            ModuleType::Media => todo!(),
+            ModuleType::Starfield(opts) => {
+                add_choice!(rgb_to_hex(opts.background), "Background", |opts| {
+                    if let ModuleType::Starfield(ref mut opts) = opts {
+                        opts.background = utils::get_color_input().unwrap()
+                    }
+                });
+                add_choice!(rgb_to_hex(opts.target_color), "Target color", |opts| {
+                    if let ModuleType::Starfield(ref mut opts) = opts {
+                        opts.target_color = utils::get_color_input().unwrap()
+                    }
+                });
+                add_choice!(opts.animation_time, "Animation time (in seconds)", |opts| {
+                    if let ModuleType::Starfield(ref mut opts) = opts {
+                        opts.animation_time = Duration::from_secs_f64(
+                            utils::get_input("Invalid number", |input| input.parse::<f64>().ok())
+                                .unwrap(),
+                        )
+                    }
+                });
+                add_choice!(opts.time_variation, "Time variation", |opts| {
+                    if let ModuleType::Starfield(ref mut opts) = opts {
+                        opts.time_variation =
+                            utils::get_input("Invalid number", |input| input.parse::<f32>().ok())
+                                .unwrap();
+                    }
+                });
+            }
+            ModuleType::Noise(opts) => {
+                add_choice!(rgb_to_hex(opts.color1), "First color", |opts| {
+                    if let ModuleType::Noise(ref mut opts) = opts {
+                        opts.color1 = utils::get_color_input().unwrap()
+                    }
+                });
+                add_choice!(rgb_to_hex(opts.color2), "Second color", |opts| {
+                    if let ModuleType::Noise(ref mut opts) = opts {
+                        opts.color2 = utils::get_color_input().unwrap()
+                    }
+                });
+                add_choice!(opts.speed, "Speed", |opts| {
+                    if let ModuleType::Noise(ref mut opts) = opts {
+                        opts.speed =
+                            utils::get_input("Invalid number", |input| input.parse::<f32>().ok())
+                                .unwrap();
+                    }
+                });
+                add_choice!(opts.zoom_factor, "Zoom factor", |opts| {
+                    if let ModuleType::Noise(ref mut opts) = opts {
+                        opts.zoom_factor =
+                            utils::get_input("Invalid number", |input| input.parse::<f32>().ok())
+                                .unwrap();
+                    }
+                });
+            }
+        };
+        (choices_names, choices_handlers)
+    }
     pub(crate) fn all_module_types() -> [ModuleType; 4] {
         [
             ModuleType::Workspaces,

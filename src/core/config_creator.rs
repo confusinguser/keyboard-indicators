@@ -37,7 +37,7 @@ async fn build_first_in_row(
     prepare_terminal_event_capture()?;
     KeyboardController::turn_all_off(sender).await?;
     loop {
-        let event = crossterm::event::read().unwrap();
+        let event = read().unwrap();
         if let Event::Key(event) = event {
             if event.kind != KeyEventKind::Press {
                 continue;
@@ -89,7 +89,7 @@ async fn build_key_led_map(
         }
         KeyboardController::update_led(sender, index, Color::new(255, 255, 255)).await?;
         loop {
-            let event = crossterm::event::read().unwrap();
+            let event = read().unwrap();
             match event {
                 Event::Key(event) => {
                     if event.kind != KeyEventKind::Press {

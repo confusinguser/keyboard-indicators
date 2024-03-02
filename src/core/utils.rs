@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 
 use anyhow::bail;
+use anyhow::Result;
 use clap::ArgMatches;
 use crossterm::event::{
     DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
@@ -53,7 +54,7 @@ pub(crate) fn overlay(color1: RGBA8, color2: RGB8) -> RGB8 {
         .rgb()
         .map(|comp| comp as f32 * color1.a as f32 / 255.)
         + color2.map(|comp| comp as f32 * (1. - color1.a as f32 / 255.)))
-    .map(|comp| comp as u8)
+        .map(|comp| comp as u8)
 }
 
 pub(crate) fn progress_bar(progress: f32, num_leds: u32, only_show_cursor: bool) -> Vec<f32> {
@@ -114,7 +115,7 @@ pub(crate) fn progress_bar_diff(
     out
 }
 
-pub(crate) fn prepare_terminal_event_capture() -> anyhow::Result<()> {
+pub(crate) fn prepare_terminal_event_capture() -> Result<()> {
     let supports_keyboard_enhancement = matches!(
         crossterm::terminal::supports_keyboard_enhancement(),
         Ok(true)
@@ -132,7 +133,7 @@ pub(crate) fn prepare_terminal_event_capture() -> anyhow::Result<()> {
                  | KeyboardEnhancementFlags::REPORT_EVENT_TYPES,
             )
         )
-        .unwrap();
+            .unwrap();
     }
     crossterm::execute!(
         stdout,
@@ -140,11 +141,11 @@ pub(crate) fn prepare_terminal_event_capture() -> anyhow::Result<()> {
         // EnableFocusChange,
         EnableMouseCapture,
     )
-    .unwrap();
+        .unwrap();
     Ok(())
 }
 
-pub(crate) fn default_terminal_settings() -> anyhow::Result<()> {
+pub(crate) fn default_terminal_settings() -> Result<()> {
     let supports_keyboard_enhancement = matches!(
         crossterm::terminal::supports_keyboard_enhancement(),
         Ok(true)
@@ -161,11 +162,11 @@ pub(crate) fn default_terminal_settings() -> anyhow::Result<()> {
         // EnableFocusChange,
         DisableMouseCapture,
     )
-    .unwrap();
+        .unwrap();
     Ok(())
 }
 
-pub(crate) fn get_keymap_path(args: &ArgMatches) -> anyhow::Result<PathBuf> {
+pub(crate) fn get_keymap_path(args: &ArgMatches) -> Result<PathBuf> {
     let keymap_path = match args.get_one::<PathBuf>("keymap") {
         None => dirs::config_dir().map(|pathbuf| pathbuf.join("keyboard-indicators/keymap.yaml")),
         Some(pathbuf) => Some(pathbuf.clone()),
@@ -178,7 +179,7 @@ pub(crate) fn get_keymap_path(args: &ArgMatches) -> anyhow::Result<PathBuf> {
     Ok(keymap_path)
 }
 
-pub(crate) fn get_config_path(args: &ArgMatches) -> anyhow::Result<PathBuf> {
+pub(crate) fn get_config_path(args: &ArgMatches) -> Result<PathBuf> {
     let keymap_path = match args.get_one::<PathBuf>("config") {
         None => dirs::config_dir().map(|pathbuf| pathbuf.join("keyboard-indicators/config.yaml")),
         Some(pathbuf) => Some(pathbuf.clone()),
@@ -210,7 +211,7 @@ pub(crate) fn color_list(len: usize, saturation: f32, lightness: f32) -> Vec<ope
     out
 }
 
-pub(crate) fn pause_until_click() -> anyhow::Result<()> {
+pub(crate) fn pause_until_click() -> Result<()> {
     let mut stdin = io::stdin();
     let mut stdout = io::stdout();
 
@@ -223,7 +224,7 @@ pub(crate) fn pause_until_click() -> anyhow::Result<()> {
     Ok(())
 }
 
-pub(crate) fn confirm_action(message: &str, default_value: bool) -> anyhow::Result<bool> {
+pub(crate) fn confirm_action(message: &str, default_value: bool) -> Result<bool> {
     print!("{}", message);
     io::stdout().flush()?;
     let stdin = io::stdin();
@@ -247,7 +248,7 @@ pub async fn highlight_all_modules(
     config: &Configuration,
     saturation: f32,
     lightness: f32,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     KeyboardController::turn_all_off(sender).await?;
     let colors = color_list(config.modules.len(), saturation, lightness);
     for (i, module) in config.modules.iter().enumerate() {
@@ -266,7 +267,7 @@ pub async fn highlight_one_module(
     num_modules: usize,
     module_index: usize,
     module: &Module,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     let colors = color_list(num_modules, 100., 100.);
     for led in &module.module_leds {
         let color = colors[module_index];
@@ -277,18 +278,101 @@ pub async fn highlight_one_module(
     Ok(())
 }
 
-pub(crate) fn interpolate(from: RGB8, to: RGB8, progress: f32) -> rgb::RGB<u8> {
+pub(crate) fn interpolate(from: RGB8, to: RGB8, progress: f32) -> RGB<u8> {
     let mut out = RGB8::new(0, 0, 0);
     out += from.map(|comp| (comp as f32 * (1. - progress)) as u8);
     out += to.map(|comp| (comp as f32 * progress) as u8);
     out
 }
 
+pub(crate) fn choose_option(options: &[impl AsRef<str>]) -> Result<usize> {
+    for (i, option) in options.iter().enumerate() {
+        println!("{}) {}", i + 1, option.as_ref());
+    }
+
+    let stdin = io::stdin();
+    for line in stdin.lock().lines() {
+        if let Ok(number_chosen) = line?.trim().parse::<usize>() {
+            if number_chosen > 0 && number_chosen <= options.len() {
+                return Ok(number_chosen - 1);
+            }
+        }
+        println!(
+            "Invalid option. Please choose a number between 1 and {}",
+            options.len()
+        );
+    }
+
+    Err(anyhow::anyhow!("No valid option chosen"))
+}
+
+pub(crate) fn rgb_to_hex(rgb: RGB8) -> String {
+    format!("#{:02X}{:02X}{:02X}", rgb.r, rgb.g, rgb.b)
+}
+
+pub(crate) fn get_color_input() -> Result<RGB<u8>> {
+    println!("Write new color: ");
+    get_input("Invalid RGB value. RGB values must be integers between 0 and 255, separated by commas or spaces, or a valid hexadecimal value (e.g., '#RRGGBB')", |input| parse_rgb(input).ok())
+}
+
+/// Takes in a closure which is applied on a line inputted by user. If the closure returns None, it
+/// prints error_message and waits for more user input. This happens until the input from user
+/// gives a Some value from closure, which is then returned
+pub(crate) fn get_input<T, F>(error_message: &str, mut f: F) -> Result<T>
+    where
+        F: FnMut(&str) -> Option<T>,
+{
+    loop {
+        let mut input = String::new();
+        io::stdin().read_line(&mut input)?;
+        let function_output = f(input.trim());
+
+        if let Some(function_output) = function_output {
+            return Ok(function_output);
+        }
+        println!("{}", error_message);
+    }
+}
+
+pub(crate) fn parse_rgb(input: &str) -> Result<RGB8> {
+    fn split_decimal_input(input: &str) -> Option<(&str, &str, &str)> {
+        let parts: Vec<&str> = input
+            .split(|c| c == ',' || c == ' ')
+            .filter(|&part| !part.is_empty())
+            .collect();
+        match (parts.get(0), parts.get(1), parts.get(2), parts.get(3)) {
+            (Some(&r), Some(&g), Some(&b), None) => Some((r, g, b)),
+            _ => None,
+        }
+    }
+    let input = input.trim();
+
+    if input.len() == 6 || input.starts_with('#') && input.len() == 7 {
+        // Remove the #
+        let input = if input.len() == 7 { &input[1..] } else { input };
+        // Handle hexadecimal format
+        let r = u8::from_str_radix(&input[0..2], 16)?;
+        let g = u8::from_str_radix(&input[2..4], 16)?;
+        let b = u8::from_str_radix(&input[4..6], 16)?;
+
+        Ok((r, g, b).into())
+    } else if let Some((r_str, g_str, b_str)) = split_decimal_input(input) {
+        // Assume the input is in the format "r g b", "r,g,b" or "r, g, b"
+        let r = r_str.parse()?;
+        let g = g_str.parse()?;
+        let b = b_str.parse()?;
+
+        Ok((r, g, b).into())
+    } else {
+        Err(anyhow::anyhow!("Invalid RGB value. RGB values must be integers between 0 and 255, separated by commas or spaces, or a valid hexadecimal value (e.g., '#RRGGBB')"))
+    }
+}
+
 /// Highlights a module with a rainbow palette to make the order of the LEDs clear
 pub async fn highlight_one_module_rainbow(
     sender: &mut Sender<KeyboardControllerMessage>,
     module: &Module,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     let num_leds = module.module_leds.len();
     let colors = color_list(num_leds, 100., 100.);
     for (i, led) in module.module_leds.iter().enumerate() {
@@ -300,10 +384,27 @@ pub async fn highlight_one_module_rainbow(
     Ok(())
 }
 
+pub fn compute_light_curve(k: f64, x: u8) -> u8 {
+    let x = x as f64;
+    let sqrt_term = (65025.0 + 4.0 * k).sqrt();
+    let denominator_1 = x - 0.5 * (255.0 + sqrt_term);
+    let denominator_2 = -0.5 * (255.0 + sqrt_term);
+
+    let result = k * (-1.0 / denominator_1 + 1. / denominator_2);
+
+    result.round() as u8
+}
+
+pub fn compute_light_curve_for_color(k: f64, color: RGB8) -> RGB8 {
+    color.map(|comp| compute_light_curve(k, comp))
+}
+
 mod tests {
     #![allow(unused_imports)]
-    use crate::core::utils::color_list;
+
     use rgb::RGB;
+
+    use crate::core::utils::{color_list, compute_light_curve};
 
     #[test]
     fn test_color_list() {
@@ -311,6 +412,13 @@ mod tests {
             let list = color_list(len, 100., 100.);
             assert_eq!(list.len(), len);
             assert_eq!(*list.first().unwrap(), RGB::from((255, 0, 0)));
+        }
+    }
+
+    #[test]
+    fn test_light_curve() {
+        for k in (1..=1000000).step_by(100) {
+            assert_eq!(compute_light_curve(k as f64, 255), 255)
         }
     }
 }

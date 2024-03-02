@@ -20,7 +20,7 @@ pub(crate) struct NoiseModuleOptions {
     pub(crate) speed: f32,
     /// Divides coordinates by value
     #[serde(default)]
-    pub(crate) zoom_in: f32,
+    pub(crate) zoom_factor: f32,
 }
 
 impl Default for NoiseModuleOptions {
@@ -29,7 +29,7 @@ impl Default for NoiseModuleOptions {
             color1: RGB::from(hsv_to_rgb(44., 0.99, 0.02)),
             color2: RGB::from(hsv_to_rgb(44., 0.99, 0.15)),
             speed: 0.01,
-            zoom_in: 3.,
+            zoom_factor: 3.,
         }
     }
 }
@@ -81,8 +81,8 @@ impl NoiseModule {
                             options.color1,
                             options.color2,
                             depth as f64,
-                            x as f64 / options.zoom_in as f64 + offset.0,
-                            current_row as f64 / options.zoom_in as f64 + offset.1,
+                            x as f64 / options.zoom_factor as f64 + offset.0,
+                            current_row as f64 / options.zoom_factor as f64 + offset.1,
                         ),
                     )
                     .await
@@ -106,7 +106,7 @@ fn led_value<T: NoiseFn<f64, 3>>(
     depth: f64,
     x: f64,
     y: f64,
-) -> rgb::RGB<u8> {
+) -> RGB<u8> {
     let interpolation = noise.get([x, y, depth]);
     utils::interpolate(background, target, interpolation as f32)
 }
