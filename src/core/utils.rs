@@ -54,7 +54,7 @@ pub(crate) fn overlay(color1: RGBA8, color2: RGB8) -> RGB8 {
         .rgb()
         .map(|comp| comp as f32 * color1.a as f32 / 255.)
         + color2.map(|comp| comp as f32 * (1. - color1.a as f32 / 255.)))
-    .map(|comp| comp as u8)
+        .map(|comp| comp as u8)
 }
 
 pub(crate) fn progress_bar(progress: f32, num_leds: u32, only_show_cursor: bool) -> Vec<f32> {
@@ -133,7 +133,7 @@ pub(crate) fn prepare_terminal_event_capture() -> Result<()> {
                  | KeyboardEnhancementFlags::REPORT_EVENT_TYPES,
             )
         )
-        .unwrap();
+            .unwrap();
     }
     crossterm::execute!(
         stdout,
@@ -141,7 +141,7 @@ pub(crate) fn prepare_terminal_event_capture() -> Result<()> {
         // EnableFocusChange,
         EnableMouseCapture,
     )
-    .unwrap();
+        .unwrap();
     Ok(())
 }
 
@@ -162,7 +162,7 @@ pub(crate) fn default_terminal_settings() -> Result<()> {
         // EnableFocusChange,
         DisableMouseCapture,
     )
-    .unwrap();
+        .unwrap();
     Ok(())
 }
 
@@ -319,8 +319,8 @@ pub(crate) fn get_color_input() -> Result<RGB<u8>> {
 /// prints error_message and waits for more user input. This happens until the input from user
 /// gives a Some value from closure, which is then returned
 pub(crate) fn get_input<T, F>(error_message: &str, mut f: F) -> Result<T>
-where
-    F: FnMut(&str) -> Option<T>,
+    where
+        F: FnMut(&str) -> Option<T>,
 {
     loop {
         let mut input = String::new();
@@ -384,10 +384,27 @@ pub async fn highlight_one_module_rainbow(
     Ok(())
 }
 
+pub fn compute_light_curve(k: f64, x: u8) -> u8 {
+    let x = x as f64;
+    let sqrt_term = (65025.0 + 4.0 * k).sqrt();
+    let denominator_1 = x - 0.5 * (255.0 + sqrt_term);
+    let denominator_2 = -0.5 * (255.0 + sqrt_term);
+
+    let result = k * (-1.0 / denominator_1 + 1. / denominator_2);
+
+    result.round() as u8
+}
+
+pub fn compute_light_curve_for_color(k: f64, color: RGB8) -> RGB8 {
+    color.map(|comp| compute_light_curve(k, comp))
+}
+
 mod tests {
     #![allow(unused_imports)]
-    use crate::core::utils::color_list;
+
     use rgb::RGB;
+
+    use crate::core::utils::{color_list, compute_light_curve};
 
     #[test]
     fn test_color_list() {
@@ -395,6 +412,13 @@ mod tests {
             let list = color_list(len, 100., 100.);
             assert_eq!(list.len(), len);
             assert_eq!(*list.first().unwrap(), RGB::from((255, 0, 0)));
+        }
+    }
+
+    #[test]
+    fn test_light_curve() {
+        for k in (1..=1000000).step_by(100) {
+            assert_eq!(compute_light_curve(k as f64, 255), 255)
         }
     }
 }

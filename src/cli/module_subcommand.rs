@@ -1,11 +1,13 @@
-use anyhow::bail;
+use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
+use anyhow::bail;
+use anyhow::Result;
 use clap::ArgMatches;
 use crossterm::event::{Event, KeyCode, KeyModifiers, MouseButton, MouseEventKind};
 use openrgb::data::Color;
 use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
@@ -19,7 +21,7 @@ use crate::core::utils::{
 use crate::modules::noise::NoiseModuleOptions;
 use crate::modules::starfield::StarfieldModuleOptions;
 
-pub async fn module(args: &ArgMatches) -> anyhow::Result<()> {
+pub async fn module(args: &ArgMatches) -> Result<()> {
     let config_path = utils::get_config_path(args)?;
     let keymap_path = utils::get_keymap_path(args)?;
     let mut config = config_manager::read_config_and_keymap(config_path, keymap_path)?;
@@ -51,10 +53,9 @@ pub async fn module(args: &ArgMatches) -> anyhow::Result<()> {
 pub async fn add(
     sender: &mut Sender<KeyboardControllerMessage>,
     config: &mut Configuration,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     println!("Choose a module to add:");
     let module_type = choose_module_type_to_add()?;
-    println!("Click the buttons which are in this module IN ORDER from left to right. Press LMB when done. Press RMB to add a button to the module which is not tied to any LED");
     add_module(sender, config, module_type).await?;
 
     Ok(())
@@ -64,8 +65,22 @@ async fn add_module(
     sender: &mut Sender<KeyboardControllerMessage>,
     config: &mut Configuration,
     module_type: ModuleType,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     prepare_terminal_event_capture()?;
+    let module_leds = pick_leds(sender, &config.keymap.key_led_map).await?;
+    default_terminal_settings()?;
+    KeyboardController::turn_all_off(sender).await?;
+    println!("Creating {}", module_type.name());
+    let module = Module::new(module_type, module_leds);
+    config.modules.push(module);
+    Ok(())
+}
+
+async fn pick_leds(
+    sender: &mut Sender<KeyboardControllerMessage>,
+    key_led_map: &HashMap<KeyCode, u32>,
+) -> Result<Vec<Option<u32>>> {
+    println!("Click the buttons which are in this module in order from left to right. Press LMB when done. Press RMB to add a button to the module which is not tied to any LED");
     let mut module_leds = Vec::new();
     loop {
         let event = crossterm::event::read().unwrap();
@@ -79,7 +94,7 @@ async fn add_module(
                 panic!("Interrupted by user");
             }
             default_terminal_settings()?;
-            if let Some(&index_pressed) = config.keymap.key_led_map.get(&event.code) {
+            if let Some(&index_pressed) = key_led_map.get(&event.code) {
                 if module_leds.contains(&Some(index_pressed)) {
                     println!("This LED has already been added");
                     prepare_terminal_event_capture()?;
@@ -96,22 +111,16 @@ async fn add_module(
         if let Event::Mouse(event) = event {
             if event.kind == MouseEventKind::Down(MouseButton::Left) {
                 default_terminal_settings()?;
-                println!("Creating {}", module_type.name());
-                let module = Module::new(module_type, module_leds);
-                config.modules.push(module);
-                break;
+                return Ok(module_leds);
             }
             if event.kind == MouseEventKind::Down(MouseButton::Right) {
                 module_leds.push(None);
             }
         }
     }
-    default_terminal_settings()?;
-    KeyboardController::turn_all_off(sender).await?;
-    Ok(())
 }
 
-fn choose_module_type_to_add() -> anyhow::Result<ModuleType> {
+fn choose_module_type_to_add() -> Result<ModuleType> {
     let all_module_types = ModuleType::all_module_types();
     let options: Vec<String> = all_module_types
         .iter()
@@ -125,7 +134,7 @@ fn choose_module_type_to_add() -> anyhow::Result<ModuleType> {
 pub async fn remove(
     sender: &mut Sender<KeyboardControllerMessage>,
     config: &mut Configuration,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     if config.modules.is_empty() {
         println!("There are no modules to remove");
         return Ok(());
@@ -167,7 +176,7 @@ Number of LEDs: {}",
 async fn choose_module_on_keyboard(
     sender: &mut Sender<KeyboardControllerMessage>,
     config: &Configuration,
-) -> anyhow::Result<usize> {
+) -> Result<usize> {
     highlight_all_modules(sender, config, 100., 100.).await?;
     prepare_terminal_event_capture()?;
 
@@ -184,24 +193,13 @@ async fn choose_module_on_keyboard(
             }
             default_terminal_settings()?;
             if let Some(&index_pressed) = config.keymap.key_led_map.get(&event.code) {
-                let mut module_index = None;
-                for (i, module) in config.modules.iter().enumerate() {
-                    for led in module.module_leds.iter().flatten() {
-                        if index_pressed == *led {
-                            module_index = Some(i);
-                            break;
-                        }
-                    }
-                    if module_index.is_some() {
-                        break;
-                    }
-                }
-                let Some(module_index) = module_index else {
+                let module_index = get_modules_with_index(config, index_pressed);
+                if let Some(module_index) = module_index {
+                    return Ok(module_index);
+                } else {
                     println!("This button is not tied to a module");
                     continue;
-                };
-                // TODO Make user select between each module that has this button
-                return Ok(module_index);
+                }
             } else {
                 println!("This button is not tied to an LED");
             }
@@ -210,10 +208,30 @@ async fn choose_module_on_keyboard(
     }
 }
 
+fn get_modules_with_index(config: &Configuration, led_index: u32) -> Option<usize> {
+    let mut module_index = None;
+    for (i, module) in config.modules.iter().enumerate() {
+        for led in module.module_leds.iter().flatten() {
+            if led_index == *led {
+                module_index = Some(i);
+                break;
+            }
+        }
+        if module_index.is_some() {
+            break;
+        }
+    }
+    let Some(module_index) = module_index else {
+        return None;
+    };
+    // TODO Make user select between each module that has this button
+    return Some(module_index);
+}
+
 async fn info(
     sender: &mut Sender<KeyboardControllerMessage>,
     config: &Configuration,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     println!("Choose a module to get info on by clicking a button in it");
     let module_index = choose_module_on_keyboard(sender, config).await?;
     let module = config.modules.get(module_index).unwrap();
@@ -232,7 +250,7 @@ async fn info(
 async fn modify(
     sender: &mut Sender<KeyboardControllerMessage>,
     config: &mut Configuration,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     let module_index = choose_module_on_keyboard(sender, config).await?;
 
     // Present options for modification and handle user input
@@ -248,7 +266,7 @@ async fn modify(
         ])?;
 
         match option {
-            0 => modify_leds(module)?,
+            0 => modify_leds(sender, &config.keymap.key_led_map, module).await?,
             1 => modify_settings(module)?,
             2 => reset_settings_to_default(module),
             3 => break,
@@ -272,7 +290,7 @@ fn reset_settings_to_default(module: &mut Module) {
     println!("Reset settings to default")
 }
 
-fn modify_settings(module: &mut Module) -> anyhow::Result<()> {
+fn modify_settings(module: &mut Module) -> Result<()> {
     macro_rules! add_choice {
         ($choices: tt, $val: expr, $name: expr) => {
             $choices.push(format!("{} [Current: {}]", $name, $val));
@@ -320,7 +338,12 @@ fn modify_settings(module: &mut Module) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn modify_leds(module_to_modify: &mut Module) -> anyhow::Result<()> {
+async fn modify_leds(
+    sender: &mut Sender<KeyboardControllerMessage>,
+    key_led_map: &HashMap<KeyCode, u32>,
+    module_to_modify: &mut Module,
+) -> Result<()> {
     // Implement logic to modify LEDs of the module
+    module_to_modify.module_leds = pick_leds(sender, key_led_map).await?;
     Ok(())
 }

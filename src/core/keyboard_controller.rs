@@ -1,15 +1,17 @@
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::Mutex;
 
 use openrgb::data::{Color, Controller};
 use openrgb::OpenRGB;
 use rgb::RGB;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::Mutex;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
+
+use crate::core::utils::compute_light_curve_for_color;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct KeyboardControllerMessage {
@@ -163,7 +165,8 @@ impl KeyboardController {
                         if led as usize >= lock.current_colors.len() {
                             continue;
                         }
-                        lock.current_colors[led as usize] = message.color;
+                        lock.current_colors[led as usize] =
+                            compute_light_curve_for_color(30000., message.color);
                     } else {
                         for i in 0..lock.current_colors.len() {
                             lock.current_colors[i] = Color::new(0, 0, 0);
