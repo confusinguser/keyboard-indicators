@@ -291,8 +291,12 @@ fn reset_settings_to_default(module: &mut Module) {
 }
 
 fn modify_settings(module: &mut Module) -> Result<()> {
-    let (choices_names, mut choices_handlers) = module.module_type.add_all_settings();
+    let (mut choices_names, mut choices_handlers) = module.module_type.add_all_settings();
+    choices_names.push("Exit".to_string());
     let option_chosen = utils::choose_option(&choices_names)?;
+    if option_chosen == choices_names.len() - 1 {
+        return Ok(());
+    }
 
     println!("Enter new value: ");
     // We remove to obtain ownership of the handler. We then call the handler
