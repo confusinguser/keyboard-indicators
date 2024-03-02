@@ -56,24 +56,23 @@ pub async fn add(
 ) -> Result<()> {
     println!("Choose a module to add:");
     let module_type = choose_module_type_to_add()?;
-    add_module(sender, config, module_type).await?;
-
+    let module = add_module(sender, config, module_type).await?;
+    modify_settings(module)?;
     Ok(())
 }
 
-async fn add_module(
+async fn add_module<'a>(
     sender: &mut Sender<KeyboardControllerMessage>,
-    config: &mut Configuration,
+    config: &'a mut Configuration,
     module_type: ModuleType,
-) -> Result<()> {
-    prepare_terminal_event_capture()?;
+) -> Result<&'a mut Module> {
     let module_leds = pick_leds(sender, &config.keymap.key_led_map).await?;
     default_terminal_settings()?;
     KeyboardController::turn_all_off(sender).await?;
     println!("Creating {}", module_type.name());
     let module = Module::new(module_type, module_leds);
     config.modules.push(module);
-    Ok(())
+    Ok(config.modules.last_mut().unwrap())
 }
 
 async fn pick_leds(
@@ -81,6 +80,7 @@ async fn pick_leds(
     key_led_map: &HashMap<KeyCode, u32>,
 ) -> Result<Vec<Option<u32>>> {
     println!("Click the buttons which are in this module in order from left to right. Press LMB when done. Press RMB to add a button to the module which is not tied to any LED");
+    prepare_terminal_event_capture()?;
     let mut module_leds = Vec::new();
     loop {
         let event = crossterm::event::read().unwrap();
@@ -291,10 +291,7 @@ fn reset_settings_to_default(module: &mut Module) {
 }
 
 fn modify_settings(module: &mut Module) -> Result<()> {
-    let (choices_names, mut choices_handlers) =
-        module
-            .module_type
-            .add_all_settings();
+    let (choices_names, mut choices_handlers) = module.module_type.add_all_settings();
     let option_chosen = utils::choose_option(&choices_names)?;
 
     println!("Enter new value: ");
