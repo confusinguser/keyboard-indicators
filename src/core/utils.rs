@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::{self, BufRead, Read, Write};
 use std::path::PathBuf;
 use std::process::Stdio;
@@ -6,7 +7,8 @@ use anyhow::bail;
 use anyhow::Result;
 use clap::ArgMatches;
 use crossterm::event::{
-    DisableMouseCapture, EnableMouseCapture, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
+    DisableMouseCapture, EnableMouseCapture, Event, KeyboardEnhancementFlags, KeyCode,
+    KeyModifiers, MouseButton, MouseEventKind, PopKeyboardEnhancementFlags,
     PushKeyboardEnhancementFlags,
 };
 use rgb::{ComponentMap, RGB, RGB8, RGBA8};
@@ -396,8 +398,81 @@ pub fn compute_light_curve(k: f64, x: u8) -> u8 {
     result.round() as u8
 }
 
+pub fn calculate_k_value(led_brightness: u8) -> f64 {
+    todo!()
+}
+
 pub fn compute_light_curve_for_color(k: f64, color: RGB8) -> RGB8 {
     color.map(|comp| compute_light_curve(k, comp))
+}
+
+pub async fn pick_leds(
+    sender: &mut Sender<KeyboardControllerMessage>,
+    key_led_map: &HashMap<KeyCode, u32>,
+    color: RGB8,
+) -> Result<Vec<Option<u32>>> {
+    prepare_terminal_event_capture()?;
+    let mut leds_picked = Vec::new();
+    loop {
+        let event = crossterm::event::read().unwrap();
+        if let Event::Key(event) = event {
+            if event.kind != crossterm::event::KeyEventKind::Press {
+                continue;
+            }
+            if event.modifiers.intersects(KeyModifiers::CONTROL) && event.code == KeyCode::Char('c')
+            {
+                default_terminal_settings()?;
+                panic!("Interrupted by user");
+            }
+            default_terminal_settings()?;
+            if let Some(&index_pressed) = key_led_map.get(&event.code) {
+                if leds_picked.contains(&Some(index_pressed)) {
+                    println!("This LED has already been added");
+                    prepare_terminal_event_capture()?;
+                    continue;
+                }
+                leds_picked.push(Some(index_pressed));
+                KeyboardController::update_led(sender, index_pressed, color)
+                    .await?;
+            } else {
+                println!("This button is not tied to an LED, it can't be used in module");
+            }
+            prepare_terminal_event_capture()?;
+        }
+        if let Event::Mouse(event) = event {
+            if event.kind == MouseEventKind::Down(MouseButton::Left) {
+                default_terminal_settings()?;
+                return Ok(leds_picked);
+            }
+            if event.kind == MouseEventKind::Down(MouseButton::Right) {
+                leds_picked.push(None);
+            }
+        }
+    }
+}
+
+pub(crate) async fn pick_led(key_led_map: &HashMap<KeyCode, u32>) -> Result<u32> {
+    prepare_terminal_event_capture()?;
+    loop {
+        let event = crossterm::event::read().unwrap();
+        if let Event::Key(event) = event {
+            if event.kind != crossterm::event::KeyEventKind::Press {
+                continue;
+            }
+            if event.modifiers.intersects(KeyModifiers::CONTROL) && event.code == KeyCode::Char('c')
+            {
+                default_terminal_settings()?;
+                panic!("Interrupted by user");
+            }
+            default_terminal_settings()?;
+            if let Some(&index_pressed) = key_led_map.get(&event.code) {
+                break Ok(index_pressed);
+            } else {
+                println!("This button is not tied to an LED, it can't be used in module");
+            }
+            prepare_terminal_event_capture()?;
+        }
+    }
 }
 
 mod tests {

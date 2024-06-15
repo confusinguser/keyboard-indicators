@@ -4,7 +4,7 @@ use std::sync::Arc;
 use anyhow::bail;
 use anyhow::Result;
 use clap::ArgMatches;
-use crossterm::event::{Event, KeyCode, KeyModifiers, MouseButton, MouseEventKind};
+use crossterm::event::{Event, KeyCode, KeyModifiers};
 use openrgb::data::Color;
 use tokio::sync::mpsc::{self, Sender};
 use tokio::sync::Mutex;
@@ -66,58 +66,19 @@ async fn add_module<'a>(
     config: &'a mut Configuration,
     module_type: ModuleType,
 ) -> Result<&'a mut Module> {
-    let module_leds = pick_leds(sender, &config.keymap.key_led_map).await?;
+    println!("Click the buttons which are in this module in order from left to right. Press LMB when done. Press RMB to add a button to the module which is not tied to any LED");
+    let module_leds = utils::pick_leds(
+        sender,
+        &config.keymap.key_led_map,
+        Color::new(255, 255, 255),
+    )
+        .await?;
     default_terminal_settings()?;
     KeyboardController::turn_all_off(sender).await?;
     println!("Creating {}", module_type.name());
     let module = Module::new(module_type, module_leds);
     config.modules.push(module);
     Ok(config.modules.last_mut().unwrap())
-}
-
-async fn pick_leds(
-    sender: &mut Sender<KeyboardControllerMessage>,
-    key_led_map: &HashMap<KeyCode, u32>,
-) -> Result<Vec<Option<u32>>> {
-    println!("Click the buttons which are in this module in order from left to right. Press LMB when done. Press RMB to add a button to the module which is not tied to any LED");
-    prepare_terminal_event_capture()?;
-    let mut module_leds = Vec::new();
-    loop {
-        let event = crossterm::event::read().unwrap();
-        if let Event::Key(event) = event {
-            if event.kind != crossterm::event::KeyEventKind::Press {
-                continue;
-            }
-            if event.modifiers.intersects(KeyModifiers::CONTROL) && event.code == KeyCode::Char('c')
-            {
-                default_terminal_settings()?;
-                panic!("Interrupted by user");
-            }
-            default_terminal_settings()?;
-            if let Some(&index_pressed) = key_led_map.get(&event.code) {
-                if module_leds.contains(&Some(index_pressed)) {
-                    println!("This LED has already been added");
-                    prepare_terminal_event_capture()?;
-                    continue;
-                }
-                module_leds.push(Some(index_pressed));
-                KeyboardController::update_led(sender, index_pressed, Color::new(255, 255, 255))
-                    .await?;
-            } else {
-                println!("This button is not tied to an LED, it can't be used in module");
-            }
-            prepare_terminal_event_capture()?;
-        }
-        if let Event::Mouse(event) = event {
-            if event.kind == MouseEventKind::Down(MouseButton::Left) {
-                default_terminal_settings()?;
-                return Ok(module_leds);
-            }
-            if event.kind == MouseEventKind::Down(MouseButton::Right) {
-                module_leds.push(None);
-            }
-        }
-    }
 }
 
 fn choose_module_type_to_add() -> Result<ModuleType> {
@@ -311,6 +272,8 @@ async fn modify_leds(
     module_to_modify: &mut Module,
 ) -> Result<()> {
     // Implement logic to modify LEDs of the module
-    module_to_modify.module_leds = pick_leds(sender, key_led_map).await?;
+    println!("Click the buttons which are in this module in order from left to right. Press LMB when done. Press RMB to add a button to the module which is not tied to any LED");
+    module_to_modify.module_leds =
+        utils::pick_leds(sender, key_led_map, Color::new(255, 255, 255)).await?;
     Ok(())
 }
