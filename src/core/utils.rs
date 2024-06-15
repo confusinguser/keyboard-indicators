@@ -319,8 +319,8 @@ pub(crate) fn get_color_input() -> Result<RGB<u8>> {
 /// prints error_message and waits for more user input. This happens until the input from user
 /// gives a Some value from closure, which is then returned
 pub(crate) fn get_input<T, F>(error_message: &str, mut f: F) -> Result<T>
-    where
-        F: FnMut(&str) -> Option<T>,
+where
+    F: FnMut(&str) -> Option<T>,
 {
     loop {
         let mut input = String::new();
@@ -384,13 +384,14 @@ pub async fn highlight_one_module_rainbow(
     Ok(())
 }
 
+/// This light curve keeps the points (0, 0) and (255, 255) constant and curves the rest according to the value of k
 pub fn compute_light_curve(k: f64, x: u8) -> u8 {
     let x = x as f64;
-    let sqrt_term = (65025.0 + 4.0 * k).sqrt();
-    let denominator_1 = x - 0.5 * (255.0 + sqrt_term);
-    let denominator_2 = -0.5 * (255.0 + sqrt_term);
+    let common_term = 255. + (65025. + 4. * k).sqrt();
+    let denominator_1 = 2. * x - common_term;
+    let denominator_2 = common_term;
 
-    let result = k * (-1.0 / denominator_1 + 1. / denominator_2);
+    let result = 2. * k * (-1. / denominator_1 - 1. / denominator_2);
 
     result.round() as u8
 }
