@@ -20,6 +20,7 @@ use crate::core::utils::{
 };
 use crate::modules::noise::NoiseModuleOptions;
 use crate::modules::starfield::StarfieldModuleOptions;
+use crate::modules::volume::VolumeModuleOptions;
 
 pub async fn module(args: &ArgMatches) -> Result<()> {
     let config_path = utils::get_config_path(args)?;
@@ -286,6 +287,7 @@ fn reset_settings_to_default(module: &mut Module) {
         ModuleType::Media => {}
         ModuleType::Starfield(ref mut opts) => *opts = StarfieldModuleOptions::default(),
         ModuleType::Noise(ref mut opts) => *opts = NoiseModuleOptions::default(),
+        ModuleType::Volume(ref mut opts) => *opts = VolumeModuleOptions::default(),
     }
     println!("Reset settings to default")
 }

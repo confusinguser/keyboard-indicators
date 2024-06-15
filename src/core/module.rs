@@ -10,6 +10,7 @@ use crate::core::utils::rgb_to_hex;
 use crate::modules::media_playing::MediaModule;
 use crate::modules::noise::{NoiseModule, NoiseModuleOptions};
 use crate::modules::starfield::{StarfieldModule, StarfieldModuleOptions};
+use crate::modules::volume::{VolumeModule, VolumeModuleOptions};
 use crate::modules::workspaces::WorkspacesModule;
 
 use super::keyboard_controller::KeyboardControllerMessage;
@@ -35,6 +36,7 @@ pub(crate) enum ModuleType {
     Media,
     Starfield(StarfieldModuleOptions),
     Noise(NoiseModuleOptions),
+    Volume(VolumeModuleOptions),
 }
 
 impl ModuleType {
@@ -58,6 +60,9 @@ impl ModuleType {
             ModuleType::Noise(opts) => {
                 NoiseModule::run(task_tracker, cancellation_token, sender, module_leds, *opts)
             }
+            ModuleType::Volume(opts) => {
+                VolumeModule::run(task_tracker, cancellation_token, sender, module_leds, *opts)
+            }
         }
     }
 
@@ -67,6 +72,7 @@ impl ModuleType {
             ModuleType::Media => "Media Player Monitor",
             ModuleType::Starfield(_) => "Starfield Ambient",
             ModuleType::Noise(_) => "Noise",
+            ModuleType::Volume(_) => "Volume Module"
         }
     }
     pub(crate) fn desc(&self) -> &'static str {
@@ -75,6 +81,7 @@ impl ModuleType {
             ModuleType::Media => "Shows media playhead and platform on keyboard",
             ModuleType::Starfield(_) => "",
             ModuleType::Noise(_) => "Noise thing",
+            ModuleType::Volume(_) => "Volume module"
         }
     }
     pub(crate) fn add_all_settings(&self) -> (Vec<String>, Vec<Box<fn(&mut ModuleType)>>) {
@@ -142,15 +149,17 @@ impl ModuleType {
                     }
                 });
             }
+            ModuleType::Volume(_) => { /*TODO*/ }
         };
         (choices_names, choices_handlers)
     }
-    pub(crate) fn all_module_types() -> [ModuleType; 4] {
+    pub(crate) fn all_module_types() -> [ModuleType; 5] {
         [
             ModuleType::Workspaces,
             ModuleType::Media,
             ModuleType::Starfield(StarfieldModuleOptions::default()),
             ModuleType::Noise(NoiseModuleOptions::default()),
+            ModuleType::Volume(VolumeModuleOptions::default()),
         ]
     }
 }
